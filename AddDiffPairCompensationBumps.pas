@@ -59,7 +59,7 @@ begin
 
    // Second Segment (45 track)
    Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment.MoveByXY(MilsToCoord(run_len), 0);
+   Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(45.0);
    Board.AddPCBObject(Bump_Segment);
@@ -73,7 +73,7 @@ begin
 
    // Last Segment (-45 track)
    Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment.MoveByXY(MilsToCoord(run_len), 0);
+   Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(-45.0);
    Board.AddPCBObject(Bump_Segment);
