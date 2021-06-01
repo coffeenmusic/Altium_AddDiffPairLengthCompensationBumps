@@ -6,7 +6,7 @@ begin
     dx := trk.x2 - trk.x1;
     dy := trk.y2 - trk.y1;
 
-    Rot := RadToDeg(arctan((trk.y1 - trk.y2)/(trk.x1 - trk.x2)));
+    Rot := RadToDeg(arctan(dy/dx));
 
     if (dx >= 0) and (dy >= 0) then
     begin
@@ -32,6 +32,28 @@ begin
     end;
 
     result := Rot;
+end;
+
+function GetLineEquation(Track: IPCB_Track, var slope: Double, var b: Double): Boolean;
+var
+    dx, dy: Double;
+begin
+    result := True;
+
+    dx := Track.x2 - Track.x1;
+    dy := Track.y2 - Track.y1;
+
+    if dx = 0 then
+    begin
+       slope := 0;
+       result := False;
+    end
+    else
+    begin
+       slope := dy / dx;
+    end;
+
+    b := CoordToMils(Track.y1) - slope*CoordToMils(Track.x1);
 end;
 
 function GetSelectedTrack(Board: IPCB_Board) : IPCB_Track;
@@ -77,10 +99,10 @@ var
     dp: TPCBObjectHandle;
     i: Integer;
     Net : IPCB_Net;
-    InBoard:Boolean;
+    InBoard, NotVerticalLine:Boolean;
     trk1, trk2: IPCB_Track;
     found_cnt, trk1y, trk2y, width: Integer;
-    rot1, rot2: Double;
+    rot1, rot2, rot90, slope, b1, b2: Double;
 begin
    result := False;
    gap := 0.0;
@@ -109,19 +131,19 @@ begin
    // Calculate Gap
    if found_cnt = 2 then
    begin
-       rot1 := GetTrackRotation(trk1);
-       rot2 := GetTrackRotation(trk2);
+       NotVerticalLine := GetLineEquation(trk1, slope, b1);
+       NotVerticalLine := GetLineEquation(trk2, slope, b2);
 
-       if rot1 = rot2 then
+       if NotVerticalLine then
        begin
-           // Rotate to horizontal to make calculation easy
-           trk1.RotateBy(-rot1);
-           trk2.RotateBy(-rot2);
-
-           gap := CoordToMils(abs(trk1.y1 - trk2.y1) - trk1.Width);
-
-           result := True;
+          gap := abs(b1 - b2)/sqrt(1+sqr(slope)) - CoordToMils(trk1.Width);
+       end
+       else
+       begin
+          gap := CoordToMils(abs(trk1.x1 - trk2.x1) - trk1.Width);
        end;
+
+       result := True;
    end;
 end;
 
@@ -130,8 +152,9 @@ var
    Board    : IPCB_Board;
    Arc      : IPCB_Arc;
    Track, Bump, Bump_Segment : IPCB_Track;
-   side_len, run_len, gap : Double;
+   side_len, run_len, gap, width : Double;
    found_gap: Boolean;
+   x, y: Integer;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
@@ -153,34 +176,50 @@ begin
    if not found_gap then exit;
 
    Track := GetSelectedTrack(Board);
-   CalculateBump(Board, CoordToMils(Track.Width), gap, side_len, run_len);
+   width := CoordToMils(Track.Width);
+   CalculateBump(Board, width, gap, side_len, run_len);
 
    // First Segment (Flat track)
    Bump_Segment := GetBumpSegment(Track);
    Bump_Segment.MoveByXY(MilsToCoord(20), MilsToCoord(20));
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
+   Bump_Segment.RotateBy(-GetTrackRotation(Bump_Segment)); // Reset to horizontal
    Board.AddPCBObject(Bump_Segment);
+
+   x := Bump_Segment.x2;
+   y := Bump_Segment.y2;
 
    // Second Segment (45 track)
    Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(45.0);
    Board.AddPCBObject(Bump_Segment);
 
+   x := Bump_Segment.x2;
+   y := Bump_Segment.y2;
+
    // Third Segment (Top flat track)
    Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
    Bump_Segment.RotateBy(-45.0);
    Board.AddPCBObject(Bump_Segment);
 
+   x := Bump_Segment.x2;
+   y := Bump_Segment.y2;
+
    // Last Segment (-45 track)
    Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
+   Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(-45.0);
    Board.AddPCBObject(Bump_Segment);
 
    Board.ViewManager_FullUpdate;
+
+   ShowMessage('Width: '+FloatToStr(width)+', Gap: '+FloatToStr(gap)+', Side Length: '+FloatToStr(side_len)+', Run Length: '+FloatToStr(run_len));
 end;
