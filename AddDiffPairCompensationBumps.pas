@@ -34,28 +34,6 @@ begin
     result := Rot;
 end;
 
-function GetLineEquation(Track: IPCB_Track, var slope: Double, var b: Double): Boolean;
-var
-    dx, dy: Double;
-begin
-    result := True;
-
-    dx := Track.x2 - Track.x1;
-    dy := Track.y2 - Track.y1;
-
-    if dx = 0 then
-    begin
-       slope := 0;
-       result := False;
-    end
-    else
-    begin
-       slope := dy / dx;
-    end;
-
-    b := CoordToMils(Track.y1) - slope*CoordToMils(Track.x1);
-end;
-
 function GetSelectedTrack(Board: IPCB_Board) : IPCB_Track;
 var
     Track: IPCB_Track;
@@ -101,8 +79,8 @@ var
     Net : IPCB_Net;
     InBoard, NotVerticalLine:Boolean;
     trk1, trk2: IPCB_Track;
-    found_cnt, trk1y, trk2y, width: Integer;
-    rot1, rot2, rot90, slope, b1, b2: Double;
+    found_cnt, width: Integer;
+    rot1, rot2, rot90: Double;
 begin
    result := False;
    gap := 0.0;
@@ -131,17 +109,7 @@ begin
    // Calculate Gap
    if found_cnt = 2 then
    begin
-       NotVerticalLine := GetLineEquation(trk1, slope, b1);
-       NotVerticalLine := GetLineEquation(trk2, slope, b2);
-
-       if NotVerticalLine then
-       begin
-          gap := abs(b1 - b2)/sqrt(1+sqr(slope)) - CoordToMils(trk1.Width);
-       end
-       else
-       begin
-          gap := CoordToMils(abs(trk1.x1 - trk2.x1) - trk1.Width);
-       end;
+       gap := CoordToMils(Board.PrimPrimDistance(trk1, trk2));
 
        result := True;
    end;
