@@ -6,3 +6,7 @@ This will create a bump that can be added to the short end of the differential p
 
 45 degree difference: Add 2 bumps
 90 degree difference: Add 4 bumps
+
+# TODO
+- Get total route length for each end of the diff pair
+- Automatically add compensation bumps to shorter segment
