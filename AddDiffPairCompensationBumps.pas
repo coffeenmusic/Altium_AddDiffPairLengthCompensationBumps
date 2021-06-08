@@ -452,47 +452,70 @@ begin
    result := segLen;
 end;
 
-function GetDiffPairGap(Board: IPCB_Board, var gap: Double) : Boolean;
+function GetClosestDiffPairDistance(Board: IPCB_Board, Track: IPCB_Track, TrackList: TInterfaceList): Integer;
 var
-    dp: TPCBObjectHandle;
-    i: Integer;
-    Net : IPCB_Net;
-    InBoard, NotVerticalLine:Boolean;
-    trk1, trk2: IPCB_Track;
-    found_cnt, width: Integer;
-    rot1, rot2, rot90: Double;
+    trk: IPCB_Track;
+    i, minDist: Integer;
 begin
-   result := False;
-   gap := 0.0;
+    for i:=0 to TrackList.Count -1 do
+    begin
+        trk := TrackList[i];
 
-   if Board.SelectecObjectCount <> 2 then exit;
+        if (i=0) or (Board.PrimPrimDistance(Track, trk) < minDist) then
+        begin
+           minDist := Board.PrimPrimDistance(Track, trk);
+        end;
+    end;
+    result := minDist;
+end;
 
-   // Get selected tracks as IPCB_Track objects
-   found_cnt := 0;
-   for i := 0 to Board.SelectecObjectCount - 1 do
+function GetNextLargest(NumberList: TList): Integer;
+var
+    i, val, minVal: Integer;
+begin
+    for i:=0 to NumberList.Count - 1 do
+    begin
+        val := NumberList.Items[i];
+        if (i=0) or (val < minVal) then
+        begin
+            minVal := NumberList.Items[i];
+        end;
+    end;
+    result := minVal;
+end;
+
+function SortNumberList(NumberList: TList): TList;
+var
+    nextNumber: Double;
+    sorted: TList;
+begin
+    sorted := TList.Create;
+    while NumberList.Count > 0 do
+    begin
+        nextNumber := GetNextLargest(NumberList);
+        sorted.Add(nextNumber);
+        NumberList.Remove(nextNumber);
+    end;
+    result := sorted;
+end;
+
+function GetDiffPairGap(Board: IPCB_Board, TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
+var
+    i: Integer;
+    GapList: TList;
+    val: Double;
+begin
+   GapList := TList.Create;
+
+   for i := 0 to TrackList1.Count - 1 do
    begin
-      if Board.SelectecObject[i].ObjectId = eTrackObject then
-      begin
-         if i = 0 then
-         begin
-            trk1 := GetBumpSegment(Board.SelectecObject[i]);
-            Inc(found_cnt);
-         end
-         else if i = 1 then
-         begin
-            trk2 := GetBumpSegment(Board.SelectecObject[i]);
-            Inc(found_cnt);
-         end;
-      end;
+      GapList.Add(GetClosestDiffPairDistance(Board, TrackList1[i], TrackList2));
    end;
 
-   // Calculate Gap
-   if found_cnt = 2 then
-   begin
-       gap := CoordToMils(Board.PrimPrimDistance(trk1, trk2));
+   GapList := SortNumberList(GapList);
 
-       result := True;
-   end;
+   // Get median value
+   result := CoordToMils(GapList[int(GapList.Count/2)]);
 end;
 
 procedure Run;
@@ -501,7 +524,6 @@ var
    Arc      : IPCB_Arc;
    Track, Bump, Bump_Segment : IPCB_Track;
    side_len, run_len, gap, width : Double;
-   found_gap: Boolean;
    i, x, y: Integer;
    trkLen, bmpLen, trkBend : Double;
    NetList : TStringList;
@@ -564,8 +586,7 @@ begin
    end;
    if shortLen = 0 then exit;
 
-   found_gap := GetDiffPairGap(Board, gap);
-   if not found_gap then exit;
+   gap := GetDiffPairGap(Board, TrackList1, TrackList2);
 
    Track := GetSelectedTrack(Board);
    width := CoordToMils(Track.Width);
