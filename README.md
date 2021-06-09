@@ -8,5 +8,7 @@ This will create a bump that can be added to the short end of the differential p
 90 degree difference: Add 4 bumps
 
 # TODO
-- Get total route length for each end of the diff pair
-- Automatically add compensation bumps to shorter segment
+- Every two bumps, add a gap with no bumps
+- Rename GetBumpSegment() to CopyTrack()
+- Replace calculations in GetAngleBetweenTracks with function GetCoordFromLocation
+- If track spans multiple layers, throw error and exit.

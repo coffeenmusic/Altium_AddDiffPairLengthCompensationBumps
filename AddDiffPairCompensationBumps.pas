@@ -274,8 +274,6 @@ begin
    end;
 end;
 
-
-
 function SortTrackList(Board: IPCB_Board, TrackList: TInterfaceList) : TInterfaceList;
 var
     Track, PrevTrack: IPCB_Track;
@@ -319,6 +317,63 @@ begin
         exit;
     end;
     Slope := (Track.y2 - Track.y1)/(Track.x2 - Track.x1);
+end;
+
+function GetCoordFromLocation(Track: IPCB_Track, PrevTrack: IPCB_Track, Location:String, var x: Integer, var y: Integer);
+var
+    x_cent, y_cent, x_beg, y_beg, x_end, y_end: Integer;
+begin
+    if (Track.x1 = PrevTrack.x1) and (Track.y1 = PrevTrack.y1) then
+    begin
+        x_cent := Track.x1; y_cent := Track.y1;
+        x_end := Track.x2; y_end := Track.y2;
+        x_beg := PrevTrack.x2; y_beg := PrevTrack.y2;
+    end
+    else if (Track.x1 = PrevTrack.x2) and (Track.y1 = PrevTrack.y2) then
+    begin
+        x_cent := Track.x1; y_cent := Track.y1;
+        x_end := Track.x2; y_end := Track.y2;
+        x_beg := PrevTrack.x1; y_beg := PrevTrack.y1;
+    end
+    else if (Track.x2 = PrevTrack.x1) and (Track.y2 = PrevTrack.y1) then
+    begin
+        x_cent := Track.x2; y_cent := Track.y2;
+        x_end := Track.x1; y_end := Track.y1;
+        x_beg := PrevTrack.x2; y_beg := PrevTrack.y2;
+    end
+    else if (Track.x2 = PrevTrack.x2) and (Track.y2 = PrevTrack.y2) then
+    begin
+        x_cent := Track.x2; y_cent := Track.y2;
+        x_end := Track.x1; y_end := Track.y1;
+        x_beg := PrevTrack.x1; y_beg := PrevTrack.y1;
+    end;
+
+
+
+    if LowerCase(Location) = 'begin' then
+    begin
+        x := x_beg; y := y_beg;
+    end
+    else if LowerCase(Location) = 'end' then
+    begin
+        x := x_end; y := y_end;
+    end
+    else // Center
+    begin
+        x := x_cent; y := y_cent;
+    end;
+end;
+
+function SameTrack(Track1: IPCB_Track, Track2: IPCB_Track): Boolean;
+begin
+    result := False;
+    if (((Track1.x1 = Track2.x1) and (Track1.y1 = Track2.y1)) and
+       ((Track1.x2 = Track2.x2) and (Track1.y2 = Track2.y2))) or
+       (((Track1.x2 = Track2.x1) and (Track1.y2 = Track2.y1)) and
+       ((Track1.x1 = Track2.x2) and (Track1.y1 = Track2.y2))) then
+    begin
+        result := True;
+    end;
 end;
 
 function GetAngleBetweenTracks(Track: IPCB_Track, PrevTrack: IPCB_Track): Double;
@@ -518,18 +573,102 @@ begin
    result := CoordToMils(GapList[int(GapList.Count/2)]);
 end;
 
+function AddBumpToTrack(Board: IPCB_Board, Track: IPCB_Track, MatchingTrackList: TInterfaceList, gap: Double): IPCB_Track;
+var
+    side_len, run_len, width, flatLen, closestDist, dist : Double;
+    Bump_Segment, Prev_Bump_Segment, PrevPrev_Bump_Segment: IPCB_Track;
+    x, y, direction, addRot: Integer;
+begin
+   PCBServer.PreProcess;
+
+   direction := 1; addRot := 0;
+
+   CalculateBump(Board, CoordToMils(Track.Width), gap, side_len, run_len);
+   flatLen := 2*run_len + 2*(side_len/sqrt(2));
+
+   // First Segment (Flat track)
+   Bump_Segment := GetBumpSegment(Track);
+   Bump_Segment.SetState_Length(MilsToCoord(run_len));
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   Board.AddPCBObject(Bump_Segment);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+
+   x := Bump_Segment.x2;
+   y := Bump_Segment.y2;
+
+   // Second Segment (45 track)
+   PrevPrev_Bump_Segment := GetBumpSegment(Bump_Segment);
+   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment.MoveToXY(x, y);
+   Bump_Segment.SetState_Length(MilsToCoord(side_len));
+   Bump_Segment.RotateBy(direction*45.0);
+   closestDist := CoordToMils(GetClosestDiffPairDistance(Board, Bump_Segment, MatchingTrackList));
+   if closestDist < gap then
+   begin
+       direction := direction * -1;
+       Bump_Segment.RotateBy(direction*90);
+   end;
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   Board.AddPCBObject(Bump_Segment);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+
+   GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
+
+   // Third Segment (Top flat track)
+   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment.MoveToXY(x, y);
+   if SameTrack(Bump_Segment, Prev_Bump_Segment) then
+   begin
+      addRot := 180; // Bump segment didn't move outside previous bump, so rotate 180
+   end;
+   Bump_Segment.SetState_Length(MilsToCoord(run_len));
+   Bump_Segment.RotateBy((direction*-45.0)+addRot);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   Board.AddPCBObject(Bump_Segment);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+
+   GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
+
+   // Last Segment (-45 track)
+   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Bump_Segment.MoveToXY(x, y);
+   Bump_Segment.SetState_Length(MilsToCoord(side_len));
+   Bump_Segment.RotateBy(direction*-45.0);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   Board.AddPCBObject(Bump_Segment);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+
+   GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
+
+   // Update original track so it doesn't overlap new bump
+   PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   Track.SetState_Length(Track.GetState_Length() - MilsToCoord(flatLen));
+   Track.MoveToXY(x, y);
+   PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+
+   PCBServer.PostProcess;
+
+   Board.ViewManager_FullUpdate;
+
+   result := Track;
+end;
+
 procedure Run;
+const
+   BUMP_CHAIN_LIMIT = 4;
 var
    Board    : IPCB_Board;
    Arc      : IPCB_Arc;
-   Track, Bump, Bump_Segment : IPCB_Track;
-   side_len, run_len, gap, width : Double;
-   i, x, y: Integer;
-   trkLen, bmpLen, trkBend : Double;
+   Track, Bump : IPCB_Track;
+   gap, width: Double;
+   i, bmpChainCnt, bumpsNeeded, bumpsAdded: Integer;
+   trkLen, trkBend : Double;
    NetList : TStringList;
-   shortLen : Double;
-   shortNet : String;
-   TrackList1, TrackList2: TInterfaceList;
+   shortLen, side_len, run_len, flat_len : Double;
+   TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
@@ -540,14 +679,17 @@ begin
    if NetList.Count = 0 then
    begin
        ShowMessage('No tracks selected. Please select differential pair tracks before running.');
+       exit;
    end
    else if NetList.Count = 1 then
    begin
        ShowMessage('Only 1 track selected. Please select differential pair tracks before running.');
+       exit;
    end
    else if NetList.Count > 2 then
    begin
        ShowMessage('Too many tracks selected. Please only select one segment (2 tracks) of diff pair tracks.');
+       exit;
    end;
 
    // TODO: If only 2 tracks are selected and not entire track on layer, place single bump
@@ -575,63 +717,45 @@ begin
        // for now, exit
        exit;
    end;
+   bumpsNeeded := Round(abs(trkBend)/45)*2; // Number of bumps to match length
 
-
+   // Get shortest differential pair
    shortLen := GetTrackLength(Board, TrackList1);
-   shortNet := TrackList1[0].Net.Name;
+   ShortTrkList := CopyList(TrackList1, False);
+   LongTrkList := CopyList(TrackList2, False);
    if GetTrackLength(Board, TrackList2) < shortLen then
    begin
        shortLen := GetTrackLength(Board, TrackList2);
-       shortNet := TrackList2[0].Net.Name;
+       ShortTrkList := CopyList(TrackList2, False);
+       LongTrkList := CopyList(TrackList1, False);
    end;
    if shortLen = 0 then exit;
 
    gap := GetDiffPairGap(Board, TrackList1, TrackList2);
 
-   Track := GetSelectedTrack(Board);
-   width := CoordToMils(Track.Width);
+   width := CoordToMils(TrackList1[0].Width);
    CalculateBump(Board, width, gap, side_len, run_len);
-   bmpLen := 2*run_len + 2*(side_len/sqrt(2));
+   flat_len := 2*run_len + 2*(side_len/sqrt(2));
 
-   // First Segment (Flat track)
-   Bump_Segment := GetBumpSegment(Track);
-   Bump_Segment.MoveByXY(MilsToCoord(20), MilsToCoord(20));
-   Bump_Segment.SetState_Length(MilsToCoord(run_len));
-   Bump_Segment.RotateBy(-GetTrackRotation(Bump_Segment, True)); // Reset to horizontal
-   Board.AddPCBObject(Bump_Segment);
+   bumpsAdded := 0;
+   for i:=0 to ShortTrkList.Count - 1 do
+   begin
+       Track := ShortTrkList[i];
+       trkLen := CoordToMils(Track.GetState_Length());
 
-   x := Bump_Segment.x2;
-   y := Bump_Segment.y2;
+       bmpChainCnt := 0;
+       while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
+       begin
+           Track.Selected := True;
+           Track := AddBumpToTrack(Board, Track, LongTrkList, gap);
+           Inc(bmpChainCnt);
+           Inc(bumpsAdded);
+           Track.Selected := False;
 
-   // Second Segment (45 track)
-   Bump_Segment := GetBumpSegment(Bump_Segment);
-   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
-   Bump_Segment.MoveToXY(x, y);
-   Bump_Segment.SetState_Length(MilsToCoord(side_len));
-   Bump_Segment.RotateBy(45.0);
-   Board.AddPCBObject(Bump_Segment);
-
-   x := Bump_Segment.x2;
-   y := Bump_Segment.y2;
-
-   // Third Segment (Top flat track)
-   Bump_Segment := GetBumpSegment(Bump_Segment);
-   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
-   Bump_Segment.MoveToXY(x, y);
-   Bump_Segment.SetState_Length(MilsToCoord(run_len));
-   Bump_Segment.RotateBy(-45.0);
-   Board.AddPCBObject(Bump_Segment);
-
-   x := Bump_Segment.x2;
-   y := Bump_Segment.y2;
-
-   // Last Segment (-45 track)
-   Bump_Segment := GetBumpSegment(Bump_Segment);
-   //Bump_Segment.MoveByXY(Bump_Segment.x2 - Bump_Segment.x1, Bump_Segment.y2 - Bump_Segment.y1);
-   Bump_Segment.MoveToXY(x, y);
-   Bump_Segment.SetState_Length(MilsToCoord(side_len));
-   Bump_Segment.RotateBy(-45.0);
-   Board.AddPCBObject(Bump_Segment);
+           if bumpsAdded >= bumpsNeeded then break;
+       end;
+       if bumpsAdded >= bumpsNeeded then break;
+   end;
 
    Board.ViewManager_FullUpdate;
 
