@@ -57,12 +57,6 @@ DocumentUniqueId=
 [Generic_Watches]
 0=GapList
 
-[Generic_ScriptingSystemBreakpoints]
-ModuleName1=C:\Users\Stephen Thompson\Documents\Macros\Altium\AddDiffPairCompensationBumps\AddDiffPairCompensationBumps.pas
-Line1=744
-Condition1=
-Enabled1=True
-
 [OutputGroup1]
 Name=Netlist Outputs
 Description=

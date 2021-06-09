@@ -554,6 +554,18 @@ begin
     result := sorted;
 end;
 
+function SwapTrackCoordinates(Track: IPCB_Track):IPCB_Track;
+var
+    NewTrack: IPCB_Track;
+begin
+    NewTrack := GetBumpSegment(Track);
+    NewTrack.x1 := Track.x2;
+    NewTrack.x2 := Track.x1;
+    NewTrack.y1 := Track.y2;
+    NewTrack.y2 := Track.y1;
+    result := NewTrack;
+end;
+
 function GetDiffPairGap(Board: IPCB_Board, TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
 var
     i: Integer;
@@ -576,7 +588,7 @@ end;
 function AddBumpToTrack(Board: IPCB_Board, Track: IPCB_Track, MatchingTrackList: TInterfaceList, gap: Double): IPCB_Track;
 var
     side_len, run_len, width, flatLen, closestDist, dist : Double;
-    Bump_Segment, Prev_Bump_Segment, PrevPrev_Bump_Segment: IPCB_Track;
+    Bump_Segment, Prev_Bump_Segment: IPCB_Track;
     x, y, direction, addRot: Integer;
 begin
    PCBServer.PreProcess;
@@ -597,7 +609,6 @@ begin
    y := Bump_Segment.y2;
 
    // Second Segment (45 track)
-   PrevPrev_Bump_Segment := GetBumpSegment(Bump_Segment);
    Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
    Bump_Segment := GetBumpSegment(Bump_Segment);
    Bump_Segment.MoveToXY(x, y);
@@ -608,6 +619,11 @@ begin
    begin
        direction := direction * -1;
        Bump_Segment.RotateBy(direction*90);
+       if Board.PrimPrimDistance(Bump_Segment, Prev_Bump_Segment) <> 0 then
+       begin
+           Bump_Segment.RotateBy(180);
+           Bump_Segment.MoveToXY(x, y);
+       end;
    end;
    PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
    Board.AddPCBObject(Bump_Segment);
