@@ -484,10 +484,12 @@ begin
    result := segLen;
 end;
 
-function GetClosestDiffPairDistance(Track: IPCB_Track, TrackList: TInterfaceList): Integer;
+function GetClosestDiffPair(Track: IPCB_Track, TrackList: TInterfaceList): IPCB_Track;
 var
-    trk: IPCB_Track;
+    trk, ClosestTrack: IPCB_Track;
     i, minDist: Integer;
+    ClosestTracks: TInterfaceList;
+    rot, rotClosest: Double;
 begin
     for i:=0 to TrackList.Count -1 do
     begin
@@ -498,7 +500,50 @@ begin
            minDist := Board.PrimPrimDistance(Track, trk);
         end;
     end;
-    result := minDist;
+
+    ClosestTracks := TInterfaceList.Create;
+    for i:=0 to TrackList.Count -1 do
+    begin
+        trk := TrackList[i];
+        if Board.PrimPrimDistance(Track, trk) = minDist then
+        begin
+            ClosestTracks.Add(trk);
+        end;
+    end;
+
+    if ClosestTracks.Count = 1 then
+    begin
+        ClosestTrack := ClosestTracks[0];
+    end
+    else if ClosestTracks.Count > 1 then
+    begin
+        rot := GetTrackRotation(Track, False);
+        for i:=0 to ClosestTracks.Count-1 do
+        begin
+            trk := ClosestTracks[i];
+            rotClosest := GetTrackRotation(trk, False);
+            if rot = rotClosest then
+            begin
+                ClosestTrack := ClosestTracks[i];
+                break
+            end;
+        end;
+    end
+    else
+    begin
+        result := nil;
+        exit;
+    end;
+
+    result := ClosestTrack;
+end;
+
+function GetClosestDiffPairDistance(Track: IPCB_Track, TrackList: TInterfaceList): Integer;
+var
+    trk, ClosestTrack: IPCB_Track;
+begin
+    ClosestTrack := GetClosestDiffPair(Track, TrackList);
+    result := Board.PrimPrimDistance(Track, ClosestTrack);
 end;
 
 function GetNextLargest(NumberList: TList): Integer;
@@ -529,18 +574,6 @@ begin
         NumberList.Remove(nextNumber);
     end;
     result := sorted;
-end;
-
-function SwapTrackCoordinates(Track: IPCB_Track):IPCB_Track;
-var
-    NewTrack: IPCB_Track;
-begin
-    NewTrack := CopyTrack(Track);
-    NewTrack.x1 := Track.x2;
-    NewTrack.x2 := Track.x1;
-    NewTrack.y1 := Track.y2;
-    NewTrack.y2 := Track.y1;
-    result := NewTrack;
 end;
 
 function GetDiffPairGap(TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
@@ -708,6 +741,113 @@ begin
    PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
 end;
 
+function CompareRouteDistUpToTrack(Track: IPCB_Track, ShortList: TInterfaceList, LongList: TInterfaceList): Double;
+var
+    i: Integer;
+    ClosestTrack: IPCB_Track;
+    NewTrackList: TInterfaceList;
+    shortLen, longLen: Double;
+begin
+    NewTrackList := TInterfaceList.Create;
+
+    ClosestTrack := GetClosestDiffPair(Track, LongList);
+    if ClosestTrack = nil then
+    begin
+        result := -1;
+        exit;
+    end;
+
+    // Short Track Length
+    for i:=0 to ShortList.Count - 1 do
+    begin
+        NewTrackList.Add(ShortList[i]);
+        if ShortList[i] = Track then break;
+    end;
+    shortLen := GetTrackLength(NewTrackList);
+    NewTrackList.Clear;
+
+    // Long Track Length
+    for i:=0 to LongList.Count - 1 do
+    begin
+        NewTrackList.Add(LongList[i]);
+        if LongList[i] = ClosestTrack then break;
+    end;
+    longLen := GetTrackLength(NewTrackList);
+
+    result := abs(longLen - shortLen);
+end;
+
+function SortTracksByLengthOffset(ShortList: TInterfaceList, LongList: TInterfaceList):TInterfaceList;
+var
+    i, j:Integer;
+    NextLargestTrack: IPCB_Track;
+    DistanceDelta, largest: Double;
+    NewTracks, TrackList: TInterfaceList;
+begin
+    NewTracks := TInterfaceList.Create;
+    TrackList := CopyList(ShortList, False);
+
+    while TrackList.Count > 0 do
+    begin
+    largest := 0;
+    for i:=0 to TrackList.Count - 1 do
+    begin
+        DistanceDelta := CompareRouteDistUpToTrack(TrackList[i], ShortList, LongList);
+        if (i=0) or (DistanceDelta > largest) then
+        begin
+            largest := DistanceDelta;
+            NextLargestTrack := TrackList[i];
+        end;
+    end;
+    NewTracks.Add(NextLargestTrack);
+    TrackList.Remove(NextLargestTrack);
+    end;
+
+    result := NewTracks;
+end;
+
+function GetTracksAroundBends(TrackList: TInterfaceList): TInterfaceList;
+var
+    i: Integer;
+    PrevTrack, CurTrack, NextTrack : IPCB_Track;
+    angle: Double;
+    NewTrackList: TInterfaceList;
+    keepIdx: TStringList;
+begin
+    NewTrackList := TInterfaceList.Create;
+
+    keepIdx := TStringList.Create;
+    keepIdx.Sorted := True;
+    keepIdx.Duplicates := dupIgnore;
+
+    angle := 0;
+    for i:=1 to TrackList.Count - 2 do
+    begin
+         PrevTrack := TrackList[i-1];
+         CurTrack := TrackList[i];
+         NextTrack := TrackList[i+1];
+
+         PrevTrack.Selected := True; CurTrack.Selected := True; NextTrack.Selected := True;
+
+         angle := GetAngleBetweenTracks(CurTrack, PrevTrack);
+         angle := angle + GetAngleBetweenTracks(NextTrack, CurTrack);
+
+         if abs(angle) >= 45 then
+         begin
+             keepIdx.Add(IntToStr(i-1));
+             keepIdx.Add(IntToStr(i));
+             keepIdx.Add(IntToStr(i+1));
+         end;
+         PrevTrack.Selected := False; CurTrack.Selected := False; NextTrack.Selected := False;
+    end;
+
+    for i:=0 to keepIdx.Count-1 do
+    begin
+        NewTrackList.Add(TrackList[StrToInt(keepIdx[i])]);
+    end;
+    result := NewTrackList;
+end;
+
 procedure Run;
 const
    BUMP_CHAIN_LIMIT = 4;
@@ -787,6 +927,8 @@ begin
    width := CoordToMils(TrackList1[0].Width);
    CalculateBump(width, gap, side_len, run_len);
    flat_len := 2*run_len + 2*(side_len/sqrt(2));
+
+   ShortTrkList := SortTracksByLengthOffset(ShortTrkList, LongTrkList);
 
    PCBServer.PreProcess;
 
