@@ -13,3 +13,4 @@ This will create a bump that can be added to the short end of the differential p
 - Replace calculations in GetAngleBetweenTracks with function GetCoordFromLocation
 - If track spans multiple layers, throw error and exit.
 - Calculate final length comparison between two pairs
+- Make IPCB_Board Board a global variable

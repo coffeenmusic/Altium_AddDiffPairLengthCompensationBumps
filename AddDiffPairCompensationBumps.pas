@@ -585,15 +585,58 @@ begin
    result := CoordToMils(GapList[int(GapList.Count/2)]);
 end;
 
-function AddBumpToTrack(Board: IPCB_Board, Track: IPCB_Track, MatchingTrackList: TInterfaceList, gap: Double): IPCB_Track;
+function TrackClearanceGood(Board: IPCB_Board, Track: IPCB_Track, minClearance: Integer, MatchingNet: String): Boolean;
+const
+    FILTER_PAD = 5; // mils
+var
+    Iterator: IPCB_SpatialIterator;
+    Rect : TCoordRect;
+    pad : Integer;
+    Obj: IPCB_ObjectClass;
+begin
+    result := True;
+
+    pad := MilsToCoord(FILTER_PAD);
+    Rect := Track.BoundingRectangle;
+
+    Iterator := Board.SpatialIterator_Create;
+    Iterator.AddFilter_ObjectSet(MkSet(eViaObject, ePadObject, eTrackObject));
+    Iterator.AddFilter_LayerSet(MkSet(eMultiLayer, Track.Layer));
+    Iterator.AddFilter_Area(Rect.Left - pad, Rect.Bottom - pad, Rect.Right + pad, Rect.Top + pad);
+
+    Obj := Iterator.FirstPCBObject;
+    while Obj <> nil do
+    begin
+        if (Obj.ObjectId = eTrackObject) and ((Obj.Net.Name = Track.Net.Name) or (Obj.Net.Name = MatchingNet)) then
+        begin
+            Obj := Iterator.NextPCBObject;
+            continue;
+        end;
+
+        if Board.PrimPrimDistance(Track, Obj) < minClearance then
+        begin
+            result := False;
+            exit;
+        end;
+        Obj := Iterator.NextPCBObject;
+    end;
+    Board.SpatialIterator_Destroy(Iterator);
+end;
+
+function AddBumpToTrack(Board: IPCB_Board, MatchingTrackList: TInterfaceList, gap: Double, var Track: IPCB_Track): Boolean;
+const
+    MIN_OTHER_OBJ_CLEARANCE = 4;
 var
     side_len, run_len, width, flatLen, closestDist, dist : Double;
     Bump_Segment, Prev_Bump_Segment: IPCB_Track;
-    x, y, direction, addRot: Integer;
+    i, j, x, y, direction, addRot: Integer;
+    TrksAdded: TInterfaceList;
 begin
    PCBServer.PreProcess;
 
+   result := True;
    direction := 1; addRot := 0;
+   TrksAdded := TInterfaceList.Create;
 
    CalculateBump(Board, CoordToMils(Track.Width), gap, side_len, run_len);
    flatLen := 2*run_len + 2*(side_len/sqrt(2));
@@ -601,9 +644,10 @@ begin
    // First Segment (Flat track)
    Bump_Segment := GetBumpSegment(Track);
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
    Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   TrksAdded.Add(Bump_Segment);
 
    x := Bump_Segment.x2;
    y := Bump_Segment.y2;
@@ -625,9 +669,10 @@ begin
            Bump_Segment.MoveToXY(x, y);
        end;
    end;
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
    Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
 
@@ -641,9 +686,10 @@ begin
    end;
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
    Bump_Segment.RotateBy((direction*-45.0)+addRot);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
    Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
 
@@ -653,11 +699,33 @@ begin
    Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(direction*-45.0);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
    Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
+   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
+
+   // Verify Bump Clearances, Skip first track
+   for i:=1 to TrksAdded.Count - 1 do
+   begin
+       if not TrackClearanceGood(Board, TrksAdded[i], MilsToCoord(MIN_OTHER_OBJ_CLEARANCE), MatchingTrackList[0].Net.Name) then
+       begin
+           result := False;
+           for j:=0 to TrksAdded.Count - 1 do
+           begin
+               Board.RemovePCBObject(TrksAdded[j]);
+           end;
+
+           // Add flat track
+           Bump_Segment := GetBumpSegment(Track);
+           Bump_Segment.SetState_Length(MilsToCoord(flatLen));
+           PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
+           Board.AddPCBObject(Bump_Segment);
+           PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+       break;
+       end;
+   end;
 
    // Update original track so it doesn't overlap new bump
    PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_BeginModify , c_NoEventData);
@@ -668,8 +736,6 @@ begin
    PCBServer.PostProcess;
 
    Board.ViewManager_FullUpdate;
-
-   result := Track;
 end;
 
 procedure Run;
@@ -762,12 +828,11 @@ begin
        bmpChainCnt := 0;
        while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
        begin
-           Track.Selected := True;
-           Track := AddBumpToTrack(Board, Track, LongTrkList, gap);
-           Inc(bmpChainCnt);
-           Inc(bumpsAdded);
-           Track.Selected := False;
-
+           if AddBumpToTrack(Board, LongTrkList, gap, Track) then
+           begin
+               Inc(bmpChainCnt);
+               Inc(bumpsAdded);
+           end;
            if bumpsAdded >= bumpsNeeded then break;
        end;
        if bumpsAdded >= bumpsNeeded then break;
@@ -775,5 +840,9 @@ begin
 
    Board.ViewManager_FullUpdate;
 
-   ShowMessage('Width: '+FloatToStr(width)+', Gap: '+FloatToStr(gap)+', Side Length: '+FloatToStr(side_len)+', Run Length: '+FloatToStr(run_len));
+   ShowMessage(IntToStr(bumpsAdded)+' of '+IntToStr(bumpsNeeded)+' bumps successfully added.'+
+   ' Width: '+FloatToStr(width)+
+   ', Gap: '+FloatToStr(gap)+
+   ', Side Length: '+FloatToStr(side_len)+
+   ', Run Length: '+FloatToStr(run_len));
 end;
