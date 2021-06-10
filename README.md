@@ -1,12 +1,10 @@
 # How to Run
-1. Select all tracks of poth differential pairs for a given layer. Only one layer currently supported at a time.
+1. On just one layer, select all differential pairs that you want to length match with compensation bumps. Make sure to select the full track (but just on that layer) for each diff pair.
 2. Run script
 
-This script with match the P/N lengths by adding compensation bumps to the shortest of the pair. Adds 2 bumps per 45 degree bend in pair (overall bend, not each bend since some cancel out).
+This script will match the P/N lengths by adding compensation bumps to the shortest of the pair. Adds 2 bumps per 45 degree bend in pair (overall bend, not each bend since some cancel out).
 
 # TODO
-- Add bumps at bends instead of just anywhere
-- Allow for selecting multiple diff pairs
 - Run Route --> Retrace Selected before running script???
 - Every two bumps, add a gap with no bumps
 - Replace calculations in GetAngleBetweenTracks with function GetCoordFromLocation

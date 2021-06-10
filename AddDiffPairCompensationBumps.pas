@@ -848,6 +848,37 @@ begin
     result := NewTrackList;
 end;
 
+function GetPairNet(Track: IPCB_Track, NetList: TStringList): String;
+var
+    Iterator: IPCB_BoardIterator;
+    trk: IPCB_Track;
+    i, j, dist, minDist: Integer;
+    pairNet: String;
+begin
+    if Board.SelectecObjectCount = 0 then exit;
+
+    j:=0;
+    for i := 0 to Board.SelectecObjectCount - 1 do
+    begin
+      if Board.SelectecObject[i].ObjectId = eTrackObject then
+      begin
+         trk := Board.SelectecObject[i];
+         if trk.Net.Name <> Track.Net.Name then
+         begin
+             dist := Board.PrimPrimDistance(Track, trk);
+             if (i=0) or (dist < minDist) then
+             begin
+                 minDist := dist;
+                 pairNet := trk.Net.Name;
+             end;
+             Inc(j);
+         end;
+      end;
+    end;
+
+    result := pairNet;
+end;
+
 procedure Run;
 const
    BUMP_CHAIN_LIMIT = 4;
@@ -860,6 +891,7 @@ var
    NetList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
    TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
+   pairNet1, pairNet2: String;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
@@ -876,19 +908,25 @@ begin
    begin
        ShowMessage('Only 1 track selected. Please select differential pair tracks before running.');
        exit;
-   end
-   else if NetList.Count > 2 then
-   begin
-       ShowMessage('Too many tracks selected. Please only select one segment (2 tracks) of diff pair tracks.');
-       exit;
    end;
+   //else if NetList.Count > 2 then
+   //begin
+   //    ShowMessage('Too many tracks selected. Please only select one segment (2 tracks) of diff pair tracks.');
+   //    exit;
+   //end;
 
    // TODO: If only 2 tracks are selected and not entire track on layer, place single bump
 
+   while NetList.Count > 0 do
+   begin
+
    // Store selected tracks in lists
+   pairNet1 := NetList.Get(0);
    TrackList1 := GetSelectedTrackList(NetList.Get(0));
-   TrackList2 := GetSelectedTrackList(NetList.Get(1));
-   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView);
+   NetList.Delete(NetList.IndexOf(pairNet1));
+   pairNet2 := GetPairNet(TrackList1[0], NetList);
+   TrackList2 := GetSelectedTrackList(pairNet2);
+   NetList.Delete(NetList.IndexOf(pairNet2));
 
    // SORT Tracks in track lists
    TrackList1 := SortTrackList(TrackList1);
@@ -952,6 +990,10 @@ begin
    end;
 
    PCBServer.PostProcess;
+
+   TrackList1.Clear; TrackList2.Clear;
+
+   end;
 
    Board.ViewManager_FullUpdate;
 
