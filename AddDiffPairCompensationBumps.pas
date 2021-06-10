@@ -1,3 +1,6 @@
+var
+    Board    : IPCB_Board;
+
 function GetTrackRotation(trk: IPCB_Track, Center: Boolean) : Double;
 var
     Rot: Double;
@@ -34,24 +37,7 @@ begin
     result := Rot;
 end;
 
-function GetSelectedTrack(Board: IPCB_Board) : IPCB_Track;
-var
-    Track: IPCB_Track;
-    i: Integer;
-begin
-   if Board.SelectecObjectCount = 0 then exit;
-
-   for i := 0 to Board.SelectecObjectCount - 1 do
-   begin
-      if Board.SelectecObject[i].ObjectId = eTrackObject then
-      begin
-         result := Board.SelectecObject[i];
-         exit;
-      end;
-   end;
-end;
-
-function GetSelectedTrackList(Board: IPCB_Board, NetName: String) : TInterfaceList;
+function GetSelectedTrackList(NetName: String) : TInterfaceList;
 var
     TrackList : TInterfaceList;
     i : Integer;
@@ -72,7 +58,7 @@ begin
    result := TrackList;
 end;
 
-function GetSelectedNetList(Board: IPCB_Board) : TStringList;
+function GetSelectedNetList() : TStringList;
 var
     Nets : TStringList;
     trk: IPCB_Track;
@@ -95,7 +81,7 @@ begin
    result := Nets;
 end;
 
-function CalculateBump(Board: IPCB_Board, trace_width: Double, diff_gap: Double, var side_len: Double, var top_len: Double) : Boolean;
+function CalculateBump(trace_width: Double, diff_gap: Double, var side_len: Double, var top_len: Double) : Boolean;
 var
     diff_pitch, bump_inner, bend45extra: Double;
 begin
@@ -162,7 +148,7 @@ begin
     result := minDist;
 end;
 
-function GetNextConnectedTrack(Board: IPCB_Board, OriginalTrackList: TInterfaceList, Net: String, PrevTrk: IPCB_Track, CurTrk: IPCB_Track) : IPCB_Track;
+function GetNextConnectedTrack(OriginalTrackList: TInterfaceList, Net: String, PrevTrk: IPCB_Track, CurTrk: IPCB_Track) : IPCB_Track;
 var
     TrackList, Touching: TInterfaceList;
     i, dist, minLen: Integer;
@@ -189,12 +175,7 @@ begin
 
       if Net = trk.Net.Name then
       begin
-          //Rect := trk.BoundingRectangle;
-          trk.Selected := True;
-          //Board.GraphicalView_ZoomOnRect(Rect.Left,Rect.Bottom,Rect.Right,Rect.Top);
-
           dist := CoordToMils(Board.PrimPrimDistance(CurTrk, trk));
-          trk.Selected := False;
           if Board.PrimPrimDistance(CurTrk, trk) = 0 then
           begin
               Touching.Add(trk);
@@ -226,7 +207,7 @@ begin
 end;
 
 
-function GetMatchingPairTrack(Board: IPCB_Board, Track: IPCB_Track, TrackList: TInterfaceList) : IPCB_Track;
+function GetMatchingPairTrack(Track: IPCB_Track, TrackList: TInterfaceList) : IPCB_Track;
 var
     MatchingTrack, Track2: IPCB_Track;
     i, minDistance: Integer;
@@ -243,7 +224,7 @@ begin
     result := MatchingTrack;
 end;
 
-function GetEndTrack(Board: IPCB_Board, OriginalTrackList: TInterfaceList, NetName: String) : IPCB_Track;
+function GetEndTrack(OriginalTrackList: TInterfaceList, NetName: String) : IPCB_Track;
 var
     TrackList: TInterfaceList;
     Track, PrevTrack: IPCB_Track;
@@ -261,7 +242,7 @@ begin
    while TrackList.Count > 0 do
    begin
        PrevTrack := Track;
-       Track := GetNextConnectedTrack(Board, TrackList, NetName, PrevTrack, Track);
+       Track := GetNextConnectedTrack(TrackList, NetName, PrevTrack, Track);
        if (Track <> nil) and (TrackList.Count > 0) then
        begin
           TrackList.Remove(Track);
@@ -274,7 +255,7 @@ begin
    end;
 end;
 
-function SortTrackList(Board: IPCB_Board, TrackList: TInterfaceList) : TInterfaceList;
+function SortTrackList(TrackList: TInterfaceList) : TInterfaceList;
 var
     Track, PrevTrack: IPCB_Track;
     i: Integer;
@@ -282,7 +263,7 @@ var
     NetName: String;
 begin
     NetName := TrackList[0].Net.Name;
-    Track := GetEndTrack(Board, TrackList, TrackList[0].Net.Name);
+    Track := GetEndTrack(TrackList, TrackList[0].Net.Name);
     TrackList.Remove(Track);
 
     SortedTrackList := TInterfaceList.Create;
@@ -292,7 +273,7 @@ begin
     begin
        PrevTrack := Track;
        Track.Selected := True;
-       Track := GetNextConnectedTrack(Board, TrackList, NetName, PrevTrack, Track);
+       Track := GetNextConnectedTrack(TrackList, NetName, PrevTrack, Track);
        PrevTrack.Selected := False;
        if (Track <> nil) and (TrackList.Count > 0) then
        begin
@@ -466,7 +447,7 @@ begin
    result := TotalRotation;
 end;
 
-function GetDiffPairBend(Board: IPCB_Board, TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
+function GetDiffPairBend(TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
 var
     Track: IPCB_Track;
     i, trkLen: Integer;
@@ -484,12 +465,12 @@ begin
    else
    begin
        result := -1;
-       ShowMessage('Unable to calculate differential pair bend.');
+       ShowMessage('Unable to calculate differential pair bend. Try running Route --> Retrace Selected before running the script.');
        exit;
    end;
 end;
 
-function GetTrackLength(Board: IPCB_Board, TrackList: TInterfaceList) : Double;
+function GetTrackLength(TrackList: TInterfaceList) : Double;
 var
     trk: IPCB_Track;
     i, trkLen: Integer;
@@ -507,7 +488,7 @@ begin
    result := segLen;
 end;
 
-function GetClosestDiffPairDistance(Board: IPCB_Board, Track: IPCB_Track, TrackList: TInterfaceList): Integer;
+function GetClosestDiffPairDistance(Track: IPCB_Track, TrackList: TInterfaceList): Integer;
 var
     trk: IPCB_Track;
     i, minDist: Integer;
@@ -566,7 +547,7 @@ begin
     result := NewTrack;
 end;
 
-function GetDiffPairGap(Board: IPCB_Board, TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
+function GetDiffPairGap(TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
 var
     i: Integer;
     GapList: TList;
@@ -576,7 +557,7 @@ begin
 
    for i := 0 to TrackList1.Count - 1 do
    begin
-      GapList.Add(GetClosestDiffPairDistance(Board, TrackList1[i], TrackList2));
+      GapList.Add(GetClosestDiffPairDistance(TrackList1[i], TrackList2));
    end;
 
    GapList := SortNumberList(GapList);
@@ -585,7 +566,7 @@ begin
    result := CoordToMils(GapList[int(GapList.Count/2)]);
 end;
 
-function TrackClearanceGood(Board: IPCB_Board, Track: IPCB_Track, minClearance: Integer, MatchingNet: String): Boolean;
+function TrackClearanceGood(Track: IPCB_Track, minClearance: Integer, MatchingNet: String): Boolean;
 const
     FILTER_PAD = 5; // mils
 var
@@ -623,7 +604,7 @@ begin
     Board.SpatialIterator_Destroy(Iterator);
 end;
 
-function AddBumpToTrack(Board: IPCB_Board, MatchingTrackList: TInterfaceList, gap: Double, var Track: IPCB_Track): Boolean;
+function AddBumpToTrack(MatchingTrackList: TInterfaceList, gap: Double, var Track: IPCB_Track): Boolean;
 const
     MIN_OTHER_OBJ_CLEARANCE = 4;
 var
@@ -638,7 +619,7 @@ begin
    direction := 1; addRot := 0;
    TrksAdded := TInterfaceList.Create;
 
-   CalculateBump(Board, CoordToMils(Track.Width), gap, side_len, run_len);
+   CalculateBump(CoordToMils(Track.Width), gap, side_len, run_len);
    flatLen := 2*run_len + 2*(side_len/sqrt(2));
 
    // First Segment (Flat track)
@@ -658,7 +639,7 @@ begin
    Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(direction*45.0);
-   closestDist := CoordToMils(GetClosestDiffPairDistance(Board, Bump_Segment, MatchingTrackList));
+   closestDist := CoordToMils(GetClosestDiffPairDistance(Bump_Segment, MatchingTrackList));
    if closestDist < gap then
    begin
        direction := direction * -1;
@@ -709,7 +690,7 @@ begin
    // Verify Bump Clearances, Skip first track
    for i:=1 to TrksAdded.Count - 1 do
    begin
-       if not TrackClearanceGood(Board, TrksAdded[i], MilsToCoord(MIN_OTHER_OBJ_CLEARANCE), MatchingTrackList[0].Net.Name) then
+       if not TrackClearanceGood(TrksAdded[i], MilsToCoord(MIN_OTHER_OBJ_CLEARANCE), MatchingTrackList[0].Net.Name) then
        begin
            result := False;
            for j:=0 to TrksAdded.Count - 1 do
@@ -742,7 +723,6 @@ procedure Run;
 const
    BUMP_CHAIN_LIMIT = 4;
 var
-   Board    : IPCB_Board;
    Arc      : IPCB_Arc;
    Track, Bump : IPCB_Track;
    gap, width: Double;
@@ -756,7 +736,7 @@ begin
    if Board = nil then exit;
 
    NetList := TStringList.Create;
-   NetList := GetSelectedNetList(Board);
+   NetList := GetSelectedNetList();
 
    if NetList.Count = 0 then
    begin
@@ -777,13 +757,13 @@ begin
    // TODO: If only 2 tracks are selected and not entire track on layer, place single bump
 
    // Store selected tracks in lists
-   TrackList1 := GetSelectedTrackList(Board, NetList.Get(0));
-   TrackList2 := GetSelectedTrackList(Board, NetList.Get(1));
+   TrackList1 := GetSelectedTrackList(NetList.Get(0));
+   TrackList2 := GetSelectedTrackList(NetList.Get(1));
    Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView);
 
    // SORT Tracks in track lists
-   TrackList1 := SortTrackList(Board, TrackList1);
-   TrackList2 := SortTrackList(Board, TrackList2);
+   TrackList1 := SortTrackList(TrackList1);
+   TrackList2 := SortTrackList(TrackList2);
 
    // If the last track is closer than the first track, reverse order
    if Board.PrimPrimDistance(TrackList1[0], TrackList2[0]) > Board.PrimPrimDistance(TrackList1[0], TrackList2[TrackList2.Count-1]) then
@@ -792,7 +772,7 @@ begin
    end;
 
    // Get overall bend on layer for diff pair
-   trkBend := GetDiffPairBend(Board, TrackList1, TrackList2);
+   trkBend := GetDiffPairBend(TrackList1, TrackList2);
    if trkBend = -1 then
    begin
        // TODO: Add single bump
@@ -802,21 +782,21 @@ begin
    bumpsNeeded := Round(abs(trkBend)/45)*2; // Number of bumps to match length
 
    // Get shortest differential pair
-   shortLen := GetTrackLength(Board, TrackList1);
+   shortLen := GetTrackLength(TrackList1);
    ShortTrkList := CopyList(TrackList1, False);
    LongTrkList := CopyList(TrackList2, False);
-   if GetTrackLength(Board, TrackList2) < shortLen then
+   if GetTrackLength(TrackList2) < shortLen then
    begin
-       shortLen := GetTrackLength(Board, TrackList2);
+       shortLen := GetTrackLength(TrackList2);
        ShortTrkList := CopyList(TrackList2, False);
        LongTrkList := CopyList(TrackList1, False);
    end;
    if shortLen = 0 then exit;
 
-   gap := GetDiffPairGap(Board, TrackList1, TrackList2);
+   gap := GetDiffPairGap(TrackList1, TrackList2);
 
    width := CoordToMils(TrackList1[0].Width);
-   CalculateBump(Board, width, gap, side_len, run_len);
+   CalculateBump(width, gap, side_len, run_len);
    flat_len := 2*run_len + 2*(side_len/sqrt(2));
 
    bumpsAdded := 0;
@@ -828,7 +808,7 @@ begin
        bmpChainCnt := 0;
        while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
        begin
-           if AddBumpToTrack(Board, LongTrkList, gap, Track) then
+           if AddBumpToTrack(LongTrkList, gap, Track) then
            begin
                Inc(bmpChainCnt);
                Inc(bumpsAdded);
