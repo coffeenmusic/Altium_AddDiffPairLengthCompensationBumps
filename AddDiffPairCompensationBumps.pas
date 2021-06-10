@@ -93,7 +93,7 @@ begin
    top_len := 3*trace_width;
 end;
 
-function GetBumpSegment(ReferenceTrack: IPCB_Track) : IPCB_Track;
+function CopyTrack(ReferenceTrack: IPCB_Track) : IPCB_Track;
 var
     Seg: IPCB_Track;
 begin
@@ -437,12 +437,8 @@ begin
    TotalRotation := 0;
    for i:=1 to TrackList.Count-1 do
    begin
-       //TrackList[i].Selected := True;
-       //TrackList[i-1].Selected := True;
        Rotation := GetAngleBetweenTracks(TrackList[i], TrackList[i-1]) mod 90;
        TotalRotation := TotalRotation + Rotation;
-       //TrackList[i].Selected := False;
-       //TrackList[i-1].Selected := False;
    end;
    result := TotalRotation;
 end;
@@ -539,7 +535,7 @@ function SwapTrackCoordinates(Track: IPCB_Track):IPCB_Track;
 var
     NewTrack: IPCB_Track;
 begin
-    NewTrack := GetBumpSegment(Track);
+    NewTrack := CopyTrack(Track);
     NewTrack.x1 := Track.x2;
     NewTrack.x2 := Track.x1;
     NewTrack.y1 := Track.y2;
@@ -604,6 +600,15 @@ begin
     Board.SpatialIterator_Destroy(Iterator);
 end;
 
+function AddTrackToPCB(Track: IPCB_Track);
+begin
+    PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
+
+    Board.AddPCBObject(Track);
+
+    PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+end;
+
 function AddBumpToTrack(MatchingTrackList: TInterfaceList, gap: Double, var Track: IPCB_Track): Boolean;
 const
     MIN_OTHER_OBJ_CLEARANCE = 4;
@@ -613,8 +618,6 @@ var
     i, j, x, y, direction, addRot: Integer;
     TrksAdded: TInterfaceList;
 begin
-   PCBServer.PreProcess;
-
    result := True;
    direction := 1; addRot := 0;
    TrksAdded := TInterfaceList.Create;
@@ -623,19 +626,17 @@ begin
    flatLen := 2*run_len + 2*(side_len/sqrt(2));
 
    // First Segment (Flat track)
-   Bump_Segment := GetBumpSegment(Track);
+   Bump_Segment := CopyTrack(Track);
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
-   Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   AddTrackToPCB(Bump_Segment);
    TrksAdded.Add(Bump_Segment);
 
    x := Bump_Segment.x2;
    y := Bump_Segment.y2;
 
    // Second Segment (45 track)
-   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Prev_Bump_Segment := CopyTrack(Bump_Segment);
+   Bump_Segment := CopyTrack(Bump_Segment);
    Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(direction*45.0);
@@ -650,16 +651,14 @@ begin
            Bump_Segment.MoveToXY(x, y);
        end;
    end;
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
-   Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   AddTrackToPCB(Bump_Segment);
    TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
 
    // Third Segment (Top flat track)
-   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Prev_Bump_Segment := CopyTrack(Bump_Segment);
+   Bump_Segment := CopyTrack(Bump_Segment);
    Bump_Segment.MoveToXY(x, y);
    if SameTrack(Bump_Segment, Prev_Bump_Segment) then
    begin
@@ -667,22 +666,18 @@ begin
    end;
    Bump_Segment.SetState_Length(MilsToCoord(run_len));
    Bump_Segment.RotateBy((direction*-45.0)+addRot);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
-   Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   AddTrackToPCB(Bump_Segment);
    TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
 
    // Last Segment (-45 track)
-   Prev_Bump_Segment := GetBumpSegment(Bump_Segment);
-   Bump_Segment := GetBumpSegment(Bump_Segment);
+   Prev_Bump_Segment := CopyTrack(Bump_Segment);
+   Bump_Segment := CopyTrack(Bump_Segment);
    Bump_Segment.MoveToXY(x, y);
    Bump_Segment.SetState_Length(MilsToCoord(side_len));
    Bump_Segment.RotateBy(direction*-45.0);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
-   Board.AddPCBObject(Bump_Segment);
-   PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+   AddTrackToPCB(Bump_Segment);
    TrksAdded.Add(Bump_Segment);
 
    GetCoordFromLocation(Bump_Segment, Prev_Bump_Segment, 'end', x, y);
@@ -699,11 +694,9 @@ begin
            end;
 
            // Add flat track
-           Bump_Segment := GetBumpSegment(Track);
+           Bump_Segment := CopyTrack(Track);
            Bump_Segment.SetState_Length(MilsToCoord(flatLen));
-           PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
-           Board.AddPCBObject(Bump_Segment);
-           PCBServer.SendMessageToRobots(Bump_Segment.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+           AddTrackToPCB(Bump_Segment);
        break;
        end;
    end;
@@ -713,10 +706,6 @@ begin
    Track.SetState_Length(Track.GetState_Length() - MilsToCoord(flatLen));
    Track.MoveToXY(x, y);
    PCBServer.SendMessageToRobots(Track.I_ObjectAddress, c_Broadcast, PCBM_EndModify , c_NoEventData);
-
-   PCBServer.PostProcess;
-
-   Board.ViewManager_FullUpdate;
 end;
 
 procedure Run;
@@ -799,6 +788,8 @@ begin
    CalculateBump(width, gap, side_len, run_len);
    flat_len := 2*run_len + 2*(side_len/sqrt(2));
 
+   PCBServer.PreProcess;
+
    bumpsAdded := 0;
    for i:=0 to ShortTrkList.Count - 1 do
    begin
@@ -817,6 +808,8 @@ begin
        end;
        if bumpsAdded >= bumpsNeeded then break;
    end;
+
+   PCBServer.PostProcess;
 
    Board.ViewManager_FullUpdate;
 

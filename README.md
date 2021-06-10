@@ -9,8 +9,6 @@ This script with match the P/N lengths by adding compensation bumps to the short
 - Allow for selecting multiple diff pairs
 - Run Route --> Retrace Selected before running script???
 - Every two bumps, add a gap with no bumps
-- Rename GetBumpSegment() to CopyTrack()
 - Replace calculations in GetAngleBetweenTracks with function GetCoordFromLocation
 - If track spans multiple layers, throw error and exit.
 - Calculate final length comparison between two pairs
-- Make IPCB_Board Board a global variable
