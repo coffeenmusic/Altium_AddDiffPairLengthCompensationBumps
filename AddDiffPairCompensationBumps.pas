@@ -49,7 +49,7 @@ begin
    begin
       if Board.SelectecObject[i].ObjectId = eTrackObject then
       begin
-          if Board.SelectecObject[i].Net.Name = NetName then
+          if (NetName = '') or (Board.SelectecObject[i].Net.Name = NetName) then
           begin
               TrackList.Add(Board.SelectecObject[i]);
           end;
@@ -878,6 +878,21 @@ begin
     result := pairNet;
 end;
 
+function GetTracksWithNet(TrackList: TInterfaceList, NetName: String): TInterfaceList;
+var
+    FilteredList: TInterfaceList;
+    i: Integer;
+    trk: IPCB_Track;
+begin
+    FilteredList := TInterfaceList.Create;
+    for i:=0 to TrackList.Count - 1 do
+    begin
+        trk := TrackList[i];
+        if trk.Net.Name = NetName then FilteredList.Add(trk);
+    end;
+    result := FilteredList;
+end;
+
 procedure Run;
 const
    BUMP_CHAIN_LIMIT = 4;
@@ -889,7 +904,7 @@ var
    trkLen, trkBend : Double;
    NetList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
-   TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
+   AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
    pairNet1, pairNet2: String;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
@@ -908,23 +923,21 @@ begin
        ShowMessage('Only 1 track selected. Please select differential pair tracks before running.');
        exit;
    end;
-   //else if NetList.Count > 2 then
-   //begin
-   //    ShowMessage('Too many tracks selected. Please only select one segment (2 tracks) of diff pair tracks.');
-   //    exit;
-   //end;
 
    // TODO: If only 2 tracks are selected and not entire track on layer, place single bump
 
+   AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
+   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, 0); // Deselect All Selected Objects
+   
    while NetList.Count > 0 do
    begin
 
    // Store selected tracks in lists
    pairNet1 := NetList.Get(0);
-   TrackList1 := GetSelectedTrackList(NetList.Get(0));
+   TrackList1 := GetTracksWithNet(AllTracksList, pairNet1);
    NetList.Delete(NetList.IndexOf(pairNet1));
    pairNet2 := GetPairNet(TrackList1[0], NetList);
-   TrackList2 := GetSelectedTrackList(pairNet2);
+   TrackList2 := GetTracksWithNet(AllTracksList, pairNet2);
    NetList.Delete(NetList.IndexOf(pairNet2));
 
    // SORT Tracks in track lists
