@@ -272,9 +272,8 @@ begin
     while TrackList.Count > 0 do
     begin
        PrevTrack := Track;
-       Track.Selected := True;
        Track := GetNextConnectedTrack(TrackList, NetName, PrevTrack, Track);
-       PrevTrack.Selected := False;
+
        if (Track <> nil) and (TrackList.Count > 0) then
        begin
           SortedTrackList.Add(Track);
@@ -866,7 +865,7 @@ begin
          if trk.Net.Name <> Track.Net.Name then
          begin
              dist := Board.PrimPrimDistance(Track, trk);
-             if (i=0) or (dist < minDist) then
+             if (j=0) or (dist < minDist) then
              begin
                  minDist := dist;
                  pairNet := trk.Net.Name;
