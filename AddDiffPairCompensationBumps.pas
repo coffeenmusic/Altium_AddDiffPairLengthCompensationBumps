@@ -847,32 +847,26 @@ begin
     result := NewTrackList;
 end;
 
-function GetPairNet(Track: IPCB_Track, NetList: TStringList): String;
+function GetPairNet(Track: IPCB_Track, TrackList: TInterfaceList): String;
 var
-    Iterator: IPCB_BoardIterator;
     trk: IPCB_Track;
     i, j, dist, minDist: Integer;
     pairNet: String;
 begin
-    if Board.SelectecObjectCount = 0 then exit;
-
     j:=0;
-    for i := 0 to Board.SelectecObjectCount - 1 do
+    for i := 0 to TrackList.Count - 1 do
     begin
-      if Board.SelectecObject[i].ObjectId = eTrackObject then
-      begin
-         trk := Board.SelectecObject[i];
-         if trk.Net.Name <> Track.Net.Name then
-         begin
-             dist := Board.PrimPrimDistance(Track, trk);
-             if (j=0) or (dist < minDist) then
-             begin
-                 minDist := dist;
-                 pairNet := trk.Net.Name;
-             end;
-             Inc(j);
-         end;
-      end;
+        trk := TrackList[i];
+        if trk.Net.Name <> Track.Net.Name then
+        begin
+            dist := Board.PrimPrimDistance(Track, trk);
+            if (j=0) or (dist < minDist) then
+            begin
+                minDist := dist;
+                pairNet := trk.Net.Name;
+            end;
+            Inc(j);
+        end;
     end;
 
     result := pairNet;
@@ -893,7 +887,7 @@ begin
     result := FilteredList;
 end;
 
-function GetLayersFromTrackList(TrackList: TInterfaceList): TStringList;
+function GetLayersFromTrackList(TrackList: TInterfaceList, NetName: String): TStringList;
 var
     LayerList: TStringList;
     i: Integer;
@@ -906,27 +900,68 @@ begin
     for i:=0 to TrackList.Count - 1 do
     begin
         trk := TrackList[i];
-        LayerList.Add(Layer2String(trk.Layer)); 
+        if trk.Net.Name = NetName then LayerList.Add(Layer2String(trk.Layer)); 
     end;
     result := LayerList;
+end;
+
+// Gets all newly added tracks for tracklist on layer with the same net
+function UpdateTrackList(NetName: String, LayerName: String): TInterfaceList;
+const
+    FILTER_PAD = 2;
+var
+    i, pad:Integer;
+    trk, trk2: IPCB_Track;
+    Iterator      : IPCB_BoardIterator;
+    Rect : TCoordRect;
+    NewTrackList: TInterfaceList;
+begin
+    NewTrackList := TInterfaceList.Create;
+
+    Iterator        := Board.BoardIterator_Create;
+    Iterator.AddFilter_ObjectSet(MkSet(eTrackObject, eArcObject));
+    Iterator.AddFilter_LayerSet(MkSet(String2Layer(LayerName)));
+    Iterator.AddFilter_Method(eProcessAll);
+
+    trk := Iterator.FirstPCBObject;
+    While (trk <> Nil) Do
+    Begin
+        if (trk.Layer = String2Layer(LayerName)) and (trk.Net <> nil) and (trk.Net.Name = NetName) then
+        begin
+           NewTrackList.Add(trk);
+        end;
+        trk := Iterator.NextPCBObject;
+    End;
+    result := NewTrackList;
 end;
 
 procedure Run;
 const
    BUMP_CHAIN_LIMIT = 4;
+   NEWLINECODE = #13#10;
+   REPORT_LENGTHS = False;
+   SORT_OFFSET = True;
 var
    Arc      : IPCB_Arc;
    Track, Bump : IPCB_Track;
    gap, width: Double;
    i, layer_n, bmpChainCnt, bumpsNeeded, bumpsAdded: Integer;
-   trkLen, trkBend : Double;
-   NetList, LayerList : TStringList;
+   trkLen, trkLen2, trkBend : Double;
+   NetList, LayerList, ResultList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
    AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
-   layerName, pairNet1, pairNet2: String;
+   layerName, pairNet1, pairNet2, resultTrk1, resultTrk2, resultMsg: String;
+   StartTime, EndTime, DeltaTime: TDateTime;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
+
+   StartTime := GetTime();
+
+
+
+   ResultList := TStringList.Create;
+   resultMsg := '';
 
    NetList := TStringList.Create;
    NetList := GetSelectedNetList();
@@ -940,26 +975,31 @@ begin
    begin
        ShowMessage('Only 1 track selected. Please select differential pair tracks before running.');
        exit;
+   end
+   else if NetList.Count = 2 then
+   begin
+       Client.SendMessage('PCB:SelectNext', 'SelectTopologyObjects = TRUE', 255, Client.CurrentView); // Select full track on layer
    end;
 
-   // TODO: If only 2 tracks are selected and not entire track on layer, place single bump
-
    AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
-   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, 0); // Deselect All Selected Objects
-   
+   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView);
+
+   // Iterate Nets
    while NetList.Count > 0 do
    begin
-       LayerList := GetLayersFromTrackList(AllTracksList);
-       
        pairNet1 := NetList.Get(0);
        pairNet2 := '';
+       
+       LayerList := GetLayersFromTrackList(AllTracksList, pairNet1);
+       
+       // Iterate Layers
        for layer_n := 0 to LayerList.Count - 1 do
        begin
            layerName := LayerList.Get(layer_n);
        
-           // Store selected tracks in lists
+           // Get track lists for given layer & net for each of the diff pair
            TrackList1 := FilterTrackList(AllTracksList, pairNet1, layerName);
-           if pairNet2 = '' then pairNet2 := GetPairNet(TrackList1[0], NetList); // Don't execute for every layer
+           if pairNet2 = '' then pairNet2 := GetPairNet(TrackList1[0], AllTracksList); // Don't execute for every layer
            TrackList2 := FilterTrackList(AllTracksList, pairNet2, layerName);
 
            // SORT Tracks in track lists
@@ -982,48 +1022,68 @@ begin
            end;
            bumpsNeeded := Round(abs(trkBend)/45)*2; // Number of bumps to match length
 
-           // Get shortest differential pair
-           shortLen := GetTrackLength(TrackList1);
-           ShortTrkList := CopyList(TrackList1, False);
-           LongTrkList := CopyList(TrackList2, False);
-           if GetTrackLength(TrackList2) < shortLen then
+           if bumpsNeeded > 0 then
            begin
-               shortLen := GetTrackLength(TrackList2);
-               ShortTrkList := CopyList(TrackList2, False);
-               LongTrkList := CopyList(TrackList1, False);
-           end;
-           if shortLen = 0 then exit;
-
-           gap := GetDiffPairGap(TrackList1, TrackList2);
-
-           width := CoordToMils(TrackList1[0].Width);
-           CalculateBump(width, gap, side_len, run_len);
-           flat_len := 2*run_len + 2*(side_len/sqrt(2));
-
-           ShortTrkList := SortTracksByLengthOffset(ShortTrkList, LongTrkList);
-
-           PCBServer.PreProcess;
-
-           bumpsAdded := 0;
-           for i:=0 to ShortTrkList.Count - 1 do
-           begin
-               Track := ShortTrkList[i];
-               trkLen := CoordToMils(Track.GetState_Length());
-
-               bmpChainCnt := 0;
-               while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
+           
+               // Get shortest differential pair
+               shortLen := GetTrackLength(TrackList1);
+               ShortTrkList := CopyList(TrackList1, False);
+               LongTrkList := CopyList(TrackList2, False);
+               if GetTrackLength(TrackList2) < shortLen then
                begin
-                   if AddBumpToTrack(LongTrkList, gap, Track) then
+                   shortLen := GetTrackLength(TrackList2);
+                   ShortTrkList := CopyList(TrackList2, False);
+                   LongTrkList := CopyList(TrackList1, False);
+               end;
+               if shortLen = 0 then exit;
+
+               gap := GetDiffPairGap(TrackList1, TrackList2);
+
+               width := CoordToMils(TrackList1[0].Width);
+               CalculateBump(width, gap, side_len, run_len);
+               flat_len := 2*run_len + 2*(side_len/sqrt(2));
+
+               if SORT_OFFSET then
+               begin
+                   ShortTrkList := SortTracksByLengthOffset(ShortTrkList, LongTrkList);
+               end;
+
+               PCBServer.PreProcess;
+
+               bumpsAdded := 0;
+               for i:=0 to ShortTrkList.Count - 1 do
+               begin
+                   Track := ShortTrkList[i];
+                   trkLen := CoordToMils(Track.GetState_Length());
+
+                   bmpChainCnt := 0;
+                   while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
                    begin
-                       Inc(bmpChainCnt);
-                       Inc(bumpsAdded);
+                       if AddBumpToTrack(LongTrkList, gap, Track) then
+                       begin
+                           Inc(bmpChainCnt);
+                           Inc(bumpsAdded);
+                       end;
+                       if bumpsAdded >= bumpsNeeded then break;
                    end;
                    if bumpsAdded >= bumpsNeeded then break;
                end;
-               if bumpsAdded >= bumpsNeeded then break;
-           end;
 
-           PCBServer.PostProcess;
+               PCBServer.PostProcess;
+
+               // Get new lengths
+               if REPORT_LENGTHS then
+               begin
+                   TrackList1 := UpdateTrackList(pairNet1, layerName);
+                   TrackList2 := UpdateTrackList(pairNet2, layerName);
+                   trkLen := GetTrackLength(TrackList1);
+                   trkLen2 := GetTrackLength(TrackList2);
+                   resultTrk1 := pairNet1+': '+FloatToStr(trkLen);
+                   resultTrk2 := pairNet2+': '+FloatToStr(trkLen2);
+
+                   ResultList.Add(layerName+' - '+resultTrk1+', '+resultTrk2+', Delta: '+FloatToStr(Round(abs(trkLen - trkLen2))));
+               end;
+           end; // End if bumpsNeeded > 0
 
            TrackList1.Clear; TrackList2.Clear;
         end; // End For Loop
@@ -1035,11 +1095,16 @@ begin
 
    Board.ViewManager_FullUpdate;
 
-   ShowMessage('Script Complete.');
+   EndTime := GetTime();
+   DeltaTime := abs(EndTime - StartTime)*100000;
 
-   //ShowMessage(IntToStr(bumpsAdded)+' of '+IntToStr(bumpsNeeded)+' bumps successfully added.'+
-   //' Width: '+FloatToStr(width)+
-   //', Gap: '+FloatToStr(gap)+
-   //', Side Length: '+FloatToStr(side_len)+
-   //', Run Length: '+FloatToStr(run_len));
+   // Create Show Message String
+   if REPORT_LENGTHS then
+   begin
+       for i:=0 to ResultList.Count-1 do
+       begin
+           resultMsg := resultMsg + ResultList[i] + NEWLINECODE;
+       end;
+       ShowMessage(resultMsg);
+   end;
 end;

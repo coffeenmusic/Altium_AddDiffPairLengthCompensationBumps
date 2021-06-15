@@ -5,7 +5,7 @@
 This script will match the P/N lengths by adding compensation bumps to the shortest of the pair. Adds 2 bumps per 45 degree bend in pair (overall bend, not each bend since some cancel out).
 
 # TODO
-- Run Route --> Retrace Selected before running script???
+- Run Route --> Retrace Selected before running script??? Client.SendMessage('PCB:Retrace', 'Track=True', 255, Client.CurrentView); // Retrace selected tracks  
 - Every two bumps, add a gap with no bumps
 - Replace calculations in GetAngleBetweenTracks with function GetCoordFromLocation
 - If track spans multiple layers, throw error and exit.
