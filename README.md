@@ -1,6 +1,8 @@
 # How to Run (GUI)
 ![GUI Example](gui.png)
 1. Select all differential pairs that you want to length match with compensation bumps. You can select on just one layer or on multiple layers, but speed is increased when using just one layer.
+	Note: It can be useful to run Route --> Retrace Selected before running script.
+	Note: You can also select non diff pair tracks, they will just be ignored.
 2. File --> Run Script... --> RunGUI
 3. Add Bumps To Selected
 Options: 
