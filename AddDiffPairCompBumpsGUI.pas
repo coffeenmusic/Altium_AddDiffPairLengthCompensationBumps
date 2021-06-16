@@ -991,6 +991,14 @@ begin
        exit;
    end;
 
+   // Progress Bar
+   if ShowProgress = True then
+   begin
+       ProgressBar1.Position := 1;
+       ProgressBar1.Update;
+       ProgressBar1.Max := Int(NetList.Count/2)+1;
+   end;
+
    AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
 
    // If only 2 tracks selected, select full track pair on layer
@@ -1001,13 +1009,6 @@ begin
    end;
 
    Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView);
-
-   if ShowProgress = True then
-   begin
-       ProgressBar1.Position := 0;
-       ProgressBar1.Update;
-       ProgressBar1.Max := Int(NetList.Count/2);
-   end;
 
    // Iterate Nets
    while NetList.Count > 0 do
@@ -1183,9 +1184,9 @@ begin
    ParseResult.Delimiter := ';';
    ParseResult.StrictDelimiter := True; // Otherwise it splits on spaces
 
-   ProgressBar1.Position := 0;
+   ProgressBar1.Position := 1;
    ProgressBar1.Update;
-   ProgressBar1.Max := ResultList.Count;
+   ProgressBar1.Max := ResultList.Count + 1;
 
    for i:=0 to ResultList.Count-1 do
    begin
