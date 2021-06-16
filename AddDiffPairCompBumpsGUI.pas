@@ -1168,12 +1168,13 @@ end;
 procedure TFormAddBumps.btnGetReportClick(Sender: TObject);
 const
     NEWLINECODE = #13#10;
+    TABCODE = #9;
 var
     i: Integer;
     ParseResult: TStringList;
     Net1, Net2, LayerName, ReportStr: String;
     TrackList1, TrackList2: TInterfaceList;
-    trkLen1, trkLen2: Double;
+    trkLen1, trkLen2, delta: Double;
 begin
    MemoReport.Enabled := True;
    TrackList1 := TInterfaceList.Create; TrackList2 := TInterfaceList.Create;
@@ -1181,6 +1182,10 @@ begin
    ParseResult := TStringList.Create;
    ParseResult.Delimiter := ';';
    ParseResult.StrictDelimiter := True; // Otherwise it splits on spaces
+
+   ProgressBar1.Position := 0;
+   ProgressBar1.Update;
+   ProgressBar1.Max := ResultList.Count;
 
    for i:=0 to ResultList.Count-1 do
    begin
@@ -1193,8 +1198,22 @@ begin
        TrackList2 := UpdateTrackList(Net2, LayerName);
        trkLen1 := GetTrackLength(TrackList1);
        trkLen2 := GetTrackLength(TrackList2);
+       delta := Round(abs(trkLen2-trkLen1));
 
-       ReportStr := ReportStr+LayerName+': '+Net1+'/'+Net2+' = '+FloatToStr(trkLen1)+'/'+FloatToStr(trkLen2)+NEWLINECODE;
+       if delta = 0 then
+       begin
+           ReportStr := ReportStr+LayerName+': ('+Net1+'/'+Net2+') MATCH'+NEWLINECODE;
+       end
+       else
+       begin
+           ReportStr := ReportStr+LayerName+':    Delta='+FloatToStr()+NEWLINECODE;
+           ReportStr := ReportStr+TABCODE+Net1+' = '+FloatToStr(trkLen1)+NEWLINECODE;
+           ReportStr := ReportStr+TABCODE+Net2+' = '+FloatToStr(trkLen2)+NEWLINECODE;
+           ReportStr := ReportStr+NEWLINECODE;
+       end;
+
+       ProgressBar1.Position := ProgressBar1.Position + 1;
+       ProgressBar1.Update;
    end;
    MemoReport.Text := ReportStr;
 end;

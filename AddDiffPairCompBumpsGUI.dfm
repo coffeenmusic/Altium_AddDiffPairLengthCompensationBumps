@@ -38,6 +38,7 @@ object FormAddBumps: TFormAddBumps
     Enabled = False
     Lines.Strings = (
       'MemoReport')
+    ScrollBars = ssVertical
     TabOrder = 2
   end
   object btnGetReport: TButton
