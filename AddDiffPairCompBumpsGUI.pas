@@ -1,7 +1,7 @@
 var
     Board    : IPCB_Board;
     ResultList : TStringList;
-    SmartPlace, ShowProgress: Boolean;
+    SmartPlace, RunningGUI: Boolean;
 
 function GetTrackRotation(trk: IPCB_Track, Center: Boolean) : Double;
 var
@@ -77,7 +77,7 @@ begin
       if Board.SelectecObject[i].ObjectId = eTrackObject then
       begin
          trk := Board.SelectecObject[i];
-         Nets.Add(trk.Net.Name);
+         if trk.Net.InDifferentialPair then Nets.Add(trk.Net.Name);
       end;
    end;
    result := Nets;
@@ -446,16 +446,46 @@ begin
    result := TotalRotation;
 end;
 
-function GetDiffPairBend(TrackList1: TInterfaceList, TrackList2: TInterfaceList) : Double;
+function GetPairedTracksOnly(gap: Double, TrackList1: TInterfaceList, TrackList2: TInterfaceList, var Diff1: TInterfaceList, var Diff2: TInterfaceList);
+var
+    i, j: Integer;
+    trk1, trk2: IPCB_Track;
+    rot1, rot2, dist: Double;
+begin
+    Diff1 := TInterfaceList.Create; Diff2 := TInterfaceList.Create;
+
+    for i:=0 to TrackList1.Count - 1 do
+    begin
+        trk1 := TrackList1[i];
+        for j:=0 to TrackList2.Count-1 do
+        begin
+            trk2 := TrackList2[j];
+            dist := CoordToMils(Board.PrimPrimDistance(trk1, trk2));
+            if dist = gap then
+            begin
+                rot1 := GetTrackRotation(trk1, False);
+                rot2 := GetTrackRotation(trk2, False);
+                if rot1 = rot2 then
+                begin
+                    Diff1.Add(trk1); Diff2.Add(trk2);
+                end;
+            end;
+        end;
+    end;
+end;
+
+function GetDiffPairBend(TrackList1: TInterfaceList, TrackList2: TInterfaceList, gap: Double) : Double;
 var
     Track: IPCB_Track;
     i, trkLen: Integer;
     Bend1, Bend2 : Double;
-    RotList1, RotList2: TInterfaceList;
+    RotList1, RotList2, Diff1, Diff2: TInterfaceList;
 begin
+   GetPairedTracksOnly(gap, TrackList1, TrackList2, Diff1, Diff2);
+
    Bend1 := 0; Bend2 := 0;
-   Bend1 := GetTrackRotationDelta(TrackList1);
-   Bend2 := GetTrackRotationDelta(TrackList2);
+   Bend1 := GetTrackRotationDelta(Diff1);
+   Bend2 := GetTrackRotationDelta(Diff2);
    if Bend1 = Bend2 then
    begin
        result := Bend1;
@@ -992,7 +1022,7 @@ begin
    end;
 
    // Progress Bar
-   if ShowProgress = True then
+   if RunningGUI = True then
    begin
        ProgressBar1.Position := 1;
        ProgressBar1.Update;
@@ -1038,8 +1068,10 @@ begin
               TrackList2 := CopyList(TrackList2, True); // Copy in reverse order
            end;
 
+           gap := GetDiffPairGap(TrackList1, TrackList2);
+
            // Get overall bend on layer for diff pair
-           trkBend := GetDiffPairBend(TrackList1, TrackList2);
+           trkBend := GetDiffPairBend(TrackList1, TrackList2, gap);
            if trkBend = -1 then
            begin
                // TODO: Add single bump
@@ -1062,8 +1094,6 @@ begin
                    LongTrkList := CopyList(TrackList1, False);
                end;
                if shortLen = 0 then exit;
-
-               gap := GetDiffPairGap(TrackList1, TrackList2);
 
                width := CoordToMils(TrackList1[0].Width);
                CalculateBump(width, gap, side_len, run_len);
@@ -1121,7 +1151,7 @@ begin
         NetList.Delete(NetList.IndexOf(pairNet1));
         NetList.Delete(NetList.IndexOf(pairNet2));
 
-        if ShowProgress then
+        if RunningGUI then
         begin
             ProgressBar1.Position := ProgressBar1.Position + 1;
             ProgressBar1.Update;
@@ -1143,6 +1173,8 @@ begin
        end;
        ShowMessage(resultMsg);
    end;
+
+   if not RunningGUI then ShowMessage('Script Complete.');
 end;
 
 Procedure RunGUI;
@@ -1151,7 +1183,7 @@ Begin
     btnGetReport.Visible := False;
     MemoReport.Enabled := False;
     MemoReport.Text := '';
-    ShowProgress := True;
+    RunningGUI := True;
 
     // Open Form
     FormAddBumps.ShowModal;
