@@ -60,7 +60,7 @@ begin
    result := TrackList;
 end;
 
-function GetSelectedNetList() : TStringList;
+function GetSelectedNetList(Board: IPCB_Board) : TStringList;
 var
     Nets : TStringList;
     trk: IPCB_Track;
@@ -978,7 +978,7 @@ begin
    resultMsg := '';
 
    NetList := TStringList.Create;
-   NetList := GetSelectedNetList();
+   NetList := GetSelectedNetList(Board);
 
    if NetList.Count = 0 then
    begin
