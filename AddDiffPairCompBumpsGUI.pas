@@ -2,6 +2,7 @@ var
     Board    : IPCB_Board;
     ResultList : TStringList;
     SmartPlace, RunningGUI: Boolean;
+    BmpChainLimit: Integer;
 
 function GetTrackRotation(trk: IPCB_Track, Center: Boolean) : Double;
 var
@@ -1027,6 +1028,10 @@ begin
        ProgressBar1.Position := 1;
        ProgressBar1.Update;
        ProgressBar1.Max := Int(NetList.Count/2)+1;
+   end
+   else
+   begin
+       BmpChainLimit := BUMP_CHAIN_LIMIT;
    end;
 
    AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
@@ -1113,7 +1118,7 @@ begin
                    trkLen := CoordToMils(Track.GetState_Length());
 
                    bmpChainCnt := 0;
-                   while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BUMP_CHAIN_LIMIT) do
+                   while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BmpChainLimit) do
                    begin
                        if AddBumpToTrack(LongTrkList, gap, Track) then
                        begin
@@ -1191,8 +1196,13 @@ Begin
 End;
 
 procedure TFormAddBumps.btnRunClick(Sender: TObject);
+var
+    txtInt: Integer;
 begin
     SmartPlace := cbSmartPlace.Checked;
+    txtInt := StrToInt(txtBumpLimit.Text);
+    if txtInt < 2 then txtInt := 2;
+    BmpChainLimit := txtInt;
     RunNoGUI;
 
     btnGetReport.Visible := True;
@@ -1249,5 +1259,10 @@ begin
        ProgressBar1.Update;
    end;
    MemoReport.Text := ReportStr;
+end;
+
+procedure TFormAddBumps.txtBumpLimitEnter(Sender: TObject);
+begin
+   txtBumpLimit.Text := '4';
 end;
 
