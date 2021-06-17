@@ -1024,7 +1024,7 @@ begin
 end;
 
 function RunNoGUI;
-const     
+const
    BUMPS_PER_45_DEG = 2;
    NEWLINECODE = #13#10;
    REPORT_LENGTHS = False;
@@ -1182,11 +1182,7 @@ begin
                    if (CoordToMils(Track.GetState_Length()) <= flat_len+run_len) then ShortTrkList.Remove(Track);
 
                    Inc(i);
-                   if i >= ShortTrkList.Count then
-                   begin
-                      ShowMessage('Track Count: '+IntToStr(ShortTrkList.Count));
-                      i:=0;
-                   end;
+                   if i >= ShortTrkList.Count then i:=0;
                end;
 
                PCBServer.PostProcess;
