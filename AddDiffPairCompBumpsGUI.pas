@@ -2,7 +2,6 @@ var
     Board    : IPCB_Board;
     ResultList : TStringList;
     SmartPlace, RunningGUI: Boolean;
-    BmpChainLimit: Integer;
 
 function GetTrackRotation(trk: IPCB_Track, Center: Boolean) : Double;
 var
@@ -439,10 +438,8 @@ begin
    TotalRotation := 0;
    for i:=1 to TrackList.Count-1 do
    begin
-       TrackList[i].Selected := True; TrackList[i-1].Selected := True;
        Rotation := GetAngleBetweenTracks(TrackList[i], TrackList[i-1]) mod 90;
        TotalRotation := TotalRotation + Rotation;
-       TrackList[i].Selected := False; TrackList[i-1].Selected := False;
    end;
    result := TotalRotation;
 end;
@@ -523,7 +520,7 @@ var
     trk, ClosestTrack: IPCB_Track;
     i, minDist: Integer;
     ClosestTracks: TInterfaceList;
-    rot, rotClosest: Double;
+    rot, rotClosest, minRot: Double;
 begin
     for i:=0 to TrackList.Count -1 do
     begin
@@ -556,10 +553,10 @@ begin
         begin
             trk := ClosestTracks[i];
             rotClosest := GetTrackRotation(trk, False);
-            if rot = rotClosest then
+            if (i=0) or (abs(rot - rotClosest) < minRot) then
             begin
+                minRot := abs(rot - rotClosest);
                 ClosestTrack := ClosestTracks[i];
-                break
             end;
         end;
     end
@@ -861,8 +858,6 @@ begin
          CurTrack := TrackList[i];
          NextTrack := TrackList[i+1];
 
-         PrevTrack.Selected := True; CurTrack.Selected := True; NextTrack.Selected := True;
-
          angle := GetAngleBetweenTracks(CurTrack, PrevTrack);
          angle := angle + GetAngleBetweenTracks(NextTrack, CurTrack);
 
@@ -872,7 +867,6 @@ begin
              keepIdx.Add(IntToStr(i));
              keepIdx.Add(IntToStr(i+1));
          end;
-         PrevTrack.Selected := False; CurTrack.Selected := False; NextTrack.Selected := False;
     end;
 
     for i:=0 to keepIdx.Count-1 do
@@ -935,9 +929,7 @@ begin
     for i:=0 to TrackList.Count - 1 do
     begin
         trk := TrackList[i];
-        trk.Selected := True;
         if trk.Net.Name = NetName then LayerList.Add(Layer2String(trk.Layer));
-        trk.Selected := False;
     end;
     result := LayerList;
 end;
@@ -969,12 +961,71 @@ begin
         end;
         trk := Iterator.NextPCBObject;
     End;
+    Board.BoardIterator_Destroy(Iterator);
+
     result := NewTrackList;
 end;
 
+function GetDiffPairList(NetList: TStringList): TInterfaceList;
+var
+    i:Integer;
+    Iterator      : IPCB_BoardIterator;
+    diff: IPCB_DifferentialPair;
+    layerName, diffName, NetPos, NetNeg: String;
+    IsSelected: Boolean;
+    DiffList : TInterfaceList;
+begin
+    Iterator        := Board.BoardIterator_Create;
+    Iterator.AddFilter_ObjectSet(MkSet(eDifferentialPairObject));
+    Iterator.AddFilter_LayerSet(AllLayers);
+    Iterator.AddFilter_Method(eProcessAll);
+
+    DiffList := TInterfaceList.Create;
+
+    i:=0;
+    diff := Iterator.FirstPCBObject;
+    While (diff <> Nil) Do
+    Begin
+        NetPos := diff.PositiveNet.Name;
+        NetNeg := diff.NegativeNet.Name;
+        if (NetList.IndexOf(NetPos) >= 0) or (NetList.IndexOf(NetNeg) >= 0) then
+        begin
+            DiffList.Add(diff);
+        end;
+
+        Inc(i);
+        diff := Iterator.NextPCBObject;
+    End;
+    Board.BoardIterator_Destroy(Iterator);
+    result := DiffList;
+end;
+
+function GetDiffPair(NetName: String, DiffList: TInterfaceList, var MatchingNet: String): IPCB_DifferentialPair;
+var
+    i: Integer;
+    diff: IPCB_DifferentialPair;
+    NetPos, NetNeg: String;
+begin
+    for i:=0 to DiffList.Count - 1 do
+    begin
+        diff := DiffList[i];
+        NetPos := diff.PositiveNet.Name;
+        NetNeg := diff.NegativeNet.Name;
+        if (NetName = NetPos) or (NetName = NetNeg) then
+        begin
+            // Get matching net
+            MatchingNet := NetNeg;
+            if NetName = NetNeg then MatchingNet := NetPos;
+
+            result := diff;
+            exit;
+        end;
+    end;
+end;
+
 function RunNoGUI;
-const
-   BUMP_CHAIN_LIMIT = 4;
+const     
+   BUMPS_PER_45_DEG = 2;
    NEWLINECODE = #13#10;
    REPORT_LENGTHS = False;
    SMART_PLACE_DEFAULT = True;
@@ -986,10 +1037,11 @@ var
    trkLen, trkLen2, trkBend : Double;
    NetList, LayerList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
-   AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList: TInterfaceList;
+   AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList, DiffList: TInterfaceList;
    layerName, pairNet1, pairNet2, resultTrk1, resultTrk2, resultMsg: String;
    StartTime, EndTime, DeltaTime: TDateTime;
    smart_place: Boolean;
+   DiffPair: IPCB_DifferentialPair;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
@@ -1028,11 +1080,9 @@ begin
        ProgressBar1.Position := 1;
        ProgressBar1.Update;
        ProgressBar1.Max := Int(NetList.Count/2)+1;
-   end
-   else
-   begin
-       BmpChainLimit := BUMP_CHAIN_LIMIT;
    end;
+
+   DiffList := GetDiffPairList(NetList);
 
    AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
 
@@ -1049,8 +1099,8 @@ begin
    while NetList.Count > 0 do
    begin
        pairNet1 := NetList.Get(0);
-       pairNet2 := '';
-       
+       DiffPair := GetDiffPair(pairNet1, DiffList, pairNet2);
+
        LayerList := GetLayersFromTrackList(AllTracksList, pairNet1);
        
        // Iterate Layers
@@ -1112,22 +1162,31 @@ begin
                PCBServer.PreProcess;
 
                bumpsAdded := 0;
-               for i:=0 to ShortTrkList.Count - 1 do
+               i := 0;
+               while (ShortTrkList.Count > 0) and (bumpsAdded < bumpsNeeded) do
                begin
                    Track := ShortTrkList[i];
                    trkLen := CoordToMils(Track.GetState_Length());
 
                    bmpChainCnt := 0;
-                   while (CoordToMils(Track.GetState_Length()) > flat_len+run_len) and (bmpChainCnt < BmpChainLimit) do
+                   while CoordToMils(Track.GetState_Length()) > flat_len+run_len do
                    begin
                        if AddBumpToTrack(LongTrkList, gap, Track) then
                        begin
                            Inc(bmpChainCnt);
                            Inc(bumpsAdded);
                        end;
-                       if bumpsAdded >= bumpsNeeded then break;
+                       if (bumpsAdded >= bumpsNeeded) or (bmpChainCnt >= BUMPS_PER_45_DEG) then break;
                    end;
-                   if bumpsAdded >= bumpsNeeded then break;
+
+                   if (CoordToMils(Track.GetState_Length()) <= flat_len+run_len) then ShortTrkList.Remove(Track);
+
+                   Inc(i);
+                   if i >= ShortTrkList.Count then
+                   begin
+                      ShowMessage('Track Count: '+IntToStr(ShortTrkList.Count));
+                      i:=0;
+                   end;
                end;
 
                PCBServer.PostProcess;
@@ -1200,9 +1259,7 @@ var
     txtInt: Integer;
 begin
     SmartPlace := cbSmartPlace.Checked;
-    txtInt := StrToInt(txtBumpLimit.Text);
-    if txtInt < 2 then txtInt := 2;
-    BmpChainLimit := txtInt;
+    btnRun.Enabled := False;
     RunNoGUI;
 
     btnGetReport.Visible := True;
@@ -1219,6 +1276,7 @@ var
     TrackList1, TrackList2: TInterfaceList;
     trkLen1, trkLen2, delta: Double;
 begin
+   btnGetReport.Enabled := False;
    MemoReport.Enabled := True;
    TrackList1 := TInterfaceList.Create; TrackList2 := TInterfaceList.Create;
 
@@ -1259,10 +1317,5 @@ begin
        ProgressBar1.Update;
    end;
    MemoReport.Text := ReportStr;
-end;
-
-procedure TFormAddBumps.txtBumpLimitEnter(Sender: TObject);
-begin
-   txtBumpLimit.Text := '4';
 end;
 

@@ -58,15 +58,4 @@ object FormAddBumps: TFormAddBumps
     Height = 22
     TabOrder = 4
   end
-  object txtBumpLimit: TEdit
-    Left = 250
-    Top = 12
-    Width = 92
-    Height = 21
-    MaxLength = 2
-    NumbersOnly = True
-    TabOrder = 5
-    Text = 'Bump Chain Limit'
-    OnEnter = txtBumpLimitEnter
-  end
 end
