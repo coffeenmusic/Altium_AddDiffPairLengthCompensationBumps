@@ -1146,6 +1146,7 @@ begin
    begin
        pairNet1 := NetList.Get(0);
        DiffPair := GetDiffPair(pairNet1, DiffList, pairNet2);
+       DiffList.Remove(DiffPair);
 
        LayerList := GetLayersFromTrackList(AllTracksList, pairNet1);
        
@@ -1253,7 +1254,7 @@ begin
                end;
            end; // End if bumpsNeeded > 0
 
-           TrackList1.Clear; TrackList2.Clear;
+           TrackList1.Clear; TrackList2.Clear; ShortTrkList.Clear; LongTrkList.Clear;
         end; // End For Loop
         
         NetList.Delete(NetList.IndexOf(pairNet1));
