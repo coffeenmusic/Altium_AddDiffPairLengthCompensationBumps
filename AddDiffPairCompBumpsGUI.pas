@@ -1023,6 +1023,49 @@ begin
     end;
 end;
 
+function GetDiffPairRuleList(Board:IPCB_Board): TInterfaceList;
+var
+    Iterator      : IPCB_BoardIterator;
+    rule: IPCB_Rule;
+    DiffPairRules: TInterfaceList;
+begin
+    DiffPairRules := TInterfaceList.Create;
+
+    Iterator        := Board.BoardIterator_Create;
+    Iterator.AddFilter_ObjectSet(MkSet(eRuleObject));
+    Iterator.AddFilter_LayerSet(AllLayers);
+    Iterator.AddFilter_Method(eProcessAll);
+
+    rule := Iterator.FirstPCBObject;
+    While (rule <> Nil) Do
+    Begin
+        if rule.RuleKind = eRule_DifferentialPairsRouting then
+        begin
+           DiffPairRules.Add(rule);
+        end;
+        rule := Iterator.NextPCBObject;
+    End;
+    Board.BoardIterator_Destroy(Iterator);
+
+    result := DiffPairRules;
+end;
+
+function GetDiffPairRuleForTrack(RuleList: TInterfaceList, Track: IPCB_Track): IPCB_Rule;
+var
+    i: Integer;
+    rule: IPCB_Rule;
+begin
+    for i:=0 to RuleList.Count-1 do
+    begin
+        rule := RuleList[i];
+        if rule.Scope1Includes(Track) then
+        begin
+            result := rule;
+            exit;
+        end;
+    end
+end;
+
 function RunNoGUI;
 const
    BUMPS_PER_45_DEG = 2;
@@ -1037,14 +1080,17 @@ var
    trkLen, trkLen2, trkBend : Double;
    NetList, LayerList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
-   AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList, DiffList: TInterfaceList;
+   AllTracksList, TrackList1, TrackList2, ShortTrkList, LongTrkList, DiffList, RuleList: TInterfaceList;
    layerName, pairNet1, pairNet2, resultTrk1, resultTrk2, resultMsg: String;
    StartTime, EndTime, DeltaTime: TDateTime;
    smart_place: Boolean;
    DiffPair: IPCB_DifferentialPair;
+   DiffRule: IPCB_Rule;
 begin
    Board := PCBServer.GetCurrentPCBBoard;
    if Board = nil then exit;
+
+   RuleList := GetDiffPairRuleList(Board);
 
    StartTime := GetTime();
 
@@ -1123,14 +1169,16 @@ begin
               TrackList2 := CopyList(TrackList2, True); // Copy in reverse order
            end;
 
-           gap := GetDiffPairGap(TrackList1, TrackList2);
+           //gap := GetDiffPairGap(TrackList1, TrackList2);
+           DiffRule := GetDiffPairRuleForTrack(RuleList, TrackList1[0]);
+           width := CoordToMils(DiffRule.PreferedWidth[TrackList1[0].Layer]);
+           gap := CoordToMils(DiffRule.PreferedGap[TrackList1[0].Layer]);
 
            // Get overall bend on layer for diff pair
            trkBend := GetDiffPairBend(TrackList1, TrackList2, gap);
            if trkBend = -1 then
            begin
-               // TODO: Add single bump
-               // for now, exit
+               ShowMessage('Error getting differential pair bend. Exiting.');
                exit;
            end;
            bumpsNeeded := Round(abs(trkBend)/45)*2; // Number of bumps to match length
@@ -1150,7 +1198,7 @@ begin
                end;
                if shortLen = 0 then exit;
 
-               width := CoordToMils(TrackList1[0].Width);
+               //width := CoordToMils(TrackList1[0].Width);
                CalculateBump(width, gap, side_len, run_len);
                flat_len := 2*run_len + 2*(side_len/sqrt(2));
 
@@ -1303,7 +1351,7 @@ begin
        end
        else
        begin
-           ReportStr := ReportStr+LayerName+':    Delta='+FloatToStr()+NEWLINECODE;
+           ReportStr := ReportStr+LayerName+':    Delta='+FloatToStr(delta)+NEWLINECODE;
            ReportStr := ReportStr+TABCODE+Net1+' = '+FloatToStr(trkLen1)+NEWLINECODE;
            ReportStr := ReportStr+TABCODE+Net2+' = '+FloatToStr(trkLen2)+NEWLINECODE;
            ReportStr := ReportStr+NEWLINECODE;
