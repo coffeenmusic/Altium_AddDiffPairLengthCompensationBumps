@@ -1139,7 +1139,14 @@ begin
        AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
    end;
 
-   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView);
+   Client.SendMessage('PCB:Retrace', 'Track=True', 255, Client.CurrentView); // Retrace selected tracks
+   // Remove any tracks from list that are no longer on pcb
+   for i:=0 to AllTracksList.Count-1 do
+   begin
+       if AllTracksList[i].InBoard then AllTracksList[i].Selected := True;
+   end;
+   AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
+   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView); // Deselect all tracks
 
    // Iterate Nets
    while NetList.Count > 0 do
@@ -1252,9 +1259,11 @@ begin
                begin
                    ResultList.Add(pairNet1+';'+pairNet2+';'+layerName);
                end;
+               
+               ShortTrkList.Clear; LongTrkList.Clear;
            end; // End if bumpsNeeded > 0
 
-           TrackList1.Clear; TrackList2.Clear; ShortTrkList.Clear; LongTrkList.Clear;
+           TrackList1.Clear; TrackList2.Clear;
         end; // End For Loop
         
         NetList.Delete(NetList.IndexOf(pairNet1));
