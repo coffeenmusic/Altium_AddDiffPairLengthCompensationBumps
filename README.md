@@ -1,3 +1,5 @@
+![Example](example.gif)
+
 # How to Run (GUI)
 ![GUI Example](gui.png)
 1. Select all differential pairs that you want to length match with compensation bumps. You can select on just one layer or on multiple layers, but speed is increased when using just one layer.
