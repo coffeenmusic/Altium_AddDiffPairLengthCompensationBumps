@@ -971,7 +971,7 @@ var
     i:Integer;
     Iterator      : IPCB_BoardIterator;
     diff: IPCB_DifferentialPair;
-    layerName, diffName, NetPos, NetNeg: String;
+    layerName, diffName, NetPos, NetNeg, Test1, Test2: String;
     IsSelected: Boolean;
     DiffList : TInterfaceList;
 begin
@@ -986,8 +986,15 @@ begin
     diff := Iterator.FirstPCBObject;
     While (diff <> Nil) Do
     Begin
+
+        if (diff.PositiveNet = Nil) Or ((diff.NegativeNet = Nil)) then
+        begin
+            diff := Iterator.NextPCBObject;
+            continue;
+        end;
         NetPos := diff.PositiveNet.Name;
         NetNeg := diff.NegativeNet.Name;
+
         if (NetList.IndexOf(NetPos) >= 0) or (NetList.IndexOf(NetNeg) >= 0) then
         begin
             DiffList.Add(diff);
@@ -1164,7 +1171,11 @@ begin
        
            // Get track lists for given layer & net for each of the diff pair
            TrackList1 := FilterTrackList(AllTracksList, pairNet1, layerName);
-           if pairNet2 = '' then pairNet2 := GetPairNet(TrackList1[0], AllTracksList); // Don't execute for every layer
+           if pairNet2 = '' then
+           begin
+               pairNet2 := GetPairNet(TrackList1[0], AllTracksList); // Don't execute for every layer
+           end;
+
            TrackList2 := FilterTrackList(AllTracksList, pairNet2, layerName);
 
            // SORT Tracks in track lists
