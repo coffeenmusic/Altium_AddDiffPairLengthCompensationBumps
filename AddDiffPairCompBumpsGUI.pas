@@ -44,7 +44,11 @@ var
     TrackList : TInterfaceList;
     i : Integer;
 begin
-   if Board.SelectecObjectCount = 0 then exit;
+   if Board.SelectecObjectCount = 0 then
+   begin
+      result := NIL;
+      exit;
+   end;
 
    TrackList := TInterfaceList.Create;
    for i := 0 to Board.SelectecObjectCount - 1 do
@@ -929,9 +933,20 @@ begin
     for i:=0 to TrackList.Count - 1 do
     begin
         trk := TrackList[i];
-        if trk.Net.Name = NetName then LayerList.Add(Layer2String(trk.Layer));
+        if ((trk.Net.Name = NetName) or (NetName = '')) then
+        begin
+            LayerList.Add(Layer2String(trk.Layer));
+        end;
     end;
     result := LayerList;
+end;
+
+function GetLayerCountFromTrackList(TrackList: TInterfaceList): Integer;
+var
+    LayerList: TStringList;
+begin
+    LayerList := GetLayersFromTrackList(TrackList, '');
+    result := LayerList.Count;
 end;
 
 // Gets all newly added tracks for tracklist on layer with the same net
@@ -1073,6 +1088,44 @@ begin
     end
 end;
 
+// Selects all tracks on layer if only one layer was selected. Selects all on multilayer if multiple layers were selected
+function SelectAllTracks();
+var
+   i, maxTrack, StartLayerCnt, LayerCnt : Integer;
+   TempList : TInterfaceList;
+begin
+     maxTrack := 0;
+     i := 0;
+
+     TempList := GetSelectedTrackList('');
+     StartLayerCnt := GetLayerCountFromTrackList(TempList);
+
+     While True Do
+     Begin
+          TempList := GetSelectedTrackList('');
+          If TempList <> NIL Then
+              Begin
+              LayerCnt := GetLayerCountFromTrackList(TempList);
+
+              If LayerCnt = StartLayerCnt Then
+              Begin
+                  If TempList.Count = maxTrack Then Break;
+                  If TempList.Count > maxTrack Then maxTrack := TempList.Count;
+              End;
+          End;
+
+          Client.SendMessage('PCB:SelectNext', 'SelectTopologyObjects = TRUE', 255, Client.CurrentView); // Iterate track selection
+
+          i := i + 1;
+
+          If i > 9 Then
+          Begin
+              ShowMessage('Timeout Exiting');
+              Exit;
+          End;
+     End;
+end;
+
 function RunNoGUI;
 const
    BUMPS_PER_45_DEG = 2;
@@ -1083,7 +1136,7 @@ var
    Arc      : IPCB_Arc;
    Track, Bump : IPCB_Track;
    gap, width: Double;
-   i, layer_n, bmpChainCnt, bumpsNeeded, bumpsAdded: Integer;
+   i, layerCnt, layer_n, bmpChainCnt, bumpsNeeded, bumpsAdded: Integer;
    trkLen, trkLen2, trkBend : Double;
    NetList, LayerList : TStringList;
    shortLen, side_len, run_len, flat_len : Double;
@@ -1137,23 +1190,9 @@ begin
 
    DiffList := GetDiffPairList(NetList);
 
-   AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
+   SelectAllTracks();
 
-   // If only 2 tracks selected, select full track pair on layer
-   if AllTracksList.Count = 2 then
-   begin
-       Client.SendMessage('PCB:SelectNext', 'SelectTopologyObjects = TRUE', 255, Client.CurrentView); // Select full track on layer
-       AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
-   end;
-
-   Client.SendMessage('PCB:Retrace', 'Track=True', 255, Client.CurrentView); // Retrace selected tracks
-   // Remove any tracks from list that are no longer on pcb
-   for i:=0 to AllTracksList.Count-1 do
-   begin
-       if AllTracksList[i].InBoard then AllTracksList[i].Selected := True;
-   end;
    AllTracksList := GetSelectedTrackList(''); // Pass empty string to get all nets
-   Client.SendMessage('PCB:DeSelect', 'Scope=All', 255, Client.CurrentView); // Deselect all tracks
 
    // Iterate Nets
    while NetList.Count > 0 do
@@ -1168,7 +1207,7 @@ begin
        for layer_n := 0 to LayerList.Count - 1 do
        begin
            layerName := LayerList.Get(layer_n);
-       
+
            // Get track lists for given layer & net for each of the diff pair
            TrackList1 := FilterTrackList(AllTracksList, pairNet1, layerName);
            if pairNet2 = '' then
